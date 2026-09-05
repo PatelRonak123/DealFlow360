@@ -89,7 +89,8 @@ export function Topbar() {
 
   // If customer role and user?.name is not yet known, optionally fetch profile data
   const { data: customerProfile, isLoading: isProfileLoading } = useCustomerProfile({
-    enabled: isCustomer && !user?.name,
+    userEmail: user?.email,
+    enabled: isCustomer && !user?.name && Boolean(user?.email),
   });
 
   const isNameLoading = isAuthLoading || (isCustomer && isProfileLoading && !user?.name);

@@ -8,8 +8,11 @@ import { normalizeRole, ROLES } from '@/lib/accessControl';
 
 export const CustomerProfilePage: React.FC = () => {
   const { user } = useAuth();
-  const { data: profile, isLoading, isError, refetch } = useCustomerProfile();
-  const updateMutation = useUpdateCustomerProfile();
+  const { data: profile, isLoading, isError, refetch } = useCustomerProfile({
+    userEmail: user?.email,
+    enabled: Boolean(user?.email),
+  });
+  const updateMutation = useUpdateCustomerProfile(user?.email);
 
   const [companyName, setCompanyName] = useState('');
   const [contactName, setContactName] = useState('');

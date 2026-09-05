@@ -13,7 +13,8 @@ export function Sidebar() {
 
   // Fetch real customer organization profile for customer users
   const { data: customerProfile, isLoading: isProfileLoading } = useCustomerProfile({
-    enabled: isCustomer,
+    userEmail: user?.email,
+    enabled: isCustomer && Boolean(user?.email),
   });
 
   // Resolve user, company, and email from real auth state and customer profile
@@ -32,7 +33,7 @@ export function Sidebar() {
     .toUpperCase() || 'CU';
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-[#e7ebf7] bg-white px-4 py-5 select-none z-30">
+    <aside className="fixed inset-y-0 left-0 z-30 flex h-screen w-64 shrink-0 flex-col border-r border-[#e7ebf7] bg-white px-4 py-5 select-none">
       <div className="mb-8 flex items-center gap-3 px-2">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#3568ed] text-white shadow-[0_8px_18px_rgba(53,104,237,0.22)]">
           <BarChart3 className="h-5 w-5" />

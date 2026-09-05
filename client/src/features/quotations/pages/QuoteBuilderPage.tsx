@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Building2,
@@ -13,7 +13,10 @@ import {
   RefreshCw,
   Send,
   FileText,
+  Sparkles,
+  TrendingUp,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -23,6 +26,168 @@ import { useProducts, usePriceLists } from '@/features/products/hooks/useProduct
 import { useCreateQuotationMutation } from '../hooks/useQuotationsQuery';
 import { BackendProductSummary } from '../types/quotationApi.types';
 import { formatINR, formatPercent } from '@/utils/formatters';
+
+export interface CrossSellRecommendation {
+  product: BackendProductSummary;
+  recommendationType: 'CROSS_SELL' | 'UPSELL';
+  title: string;
+  rationale: string;
+  expectedMarginBoost: number;
+  confidenceScore: number;
+  defaultQuantity: number;
+}
+
+export function deriveCrossSellRecommendations(
+  currentLineItems: BuilderLineItem[],
+  allProducts: BackendProductSummary[]
+): CrossSellRecommendation[] {
+  if (currentLineItems.length === 0 || allProducts.length === 0) return [];
+
+  const existingProductIds = new Set(currentLineItems.map((i) => i.product.id));
+
+  const hasHardware = currentLineItems.some(
+    (i) =>
+      i.product.category?.name?.toLowerCase().includes('hardware') ||
+      i.product.productType === 'ONE_TIME' ||
+      i.product.sku?.toUpperCase().startsWith('HW-') ||
+      ['server', 'switch', 'gateway', 'edge', 'blade', 'core'].some((w) =>
+        i.product.name?.toLowerCase().includes(w)
+      )
+  );
+
+  const hasSoftware = currentLineItems.some(
+    (i) =>
+      i.product.category?.name?.toLowerCase().includes('software') ||
+      i.product.productType === 'RECURRING' ||
+      i.product.sku?.toUpperCase().startsWith('SW-') ||
+      ['platform', 'license', 'software', 'cpq'].some((w) =>
+        i.product.name?.toLowerCase().includes(w)
+      )
+  );
+
+  const recommendations: CrossSellRecommendation[] = [];
+
+  // 1. Hardware triggers: Recommend 24/7 SLA & Warranty and/or Onsite Deployment
+  if (hasHardware) {
+    const slaProduct = allProducts.find(
+      (p) =>
+        !existingProductIds.has(p.id) &&
+        (p.sku?.toUpperCase().includes('SLA') ||
+          p.sku?.toUpperCase().includes('SVC-SLA') ||
+          p.name.toLowerCase().includes('sla') ||
+          p.name.toLowerCase().includes('mission-critical') ||
+          p.name.toLowerCase().includes('warranty'))
+    );
+    if (slaProduct) {
+      recommendations.push({
+        product: slaProduct,
+        recommendationType: 'CROSS_SELL',
+        title: '24/7 Mission-Critical SLA & Replacement Support',
+        rationale:
+          '92% of enterprise hardware buyers attach 24/7 Mission-Critical SLA to guarantee 4-hour hardware replacement and dedicated TAM.',
+        expectedMarginBoost: 4.8,
+        confidenceScore: 95,
+        defaultQuantity: 1,
+      });
+    }
+
+    const deployProduct = allProducts.find(
+      (p) =>
+        !existingProductIds.has(p.id) &&
+        (p.sku?.toUpperCase().includes('DEPLOY') ||
+          p.name.toLowerCase().includes('deployment') ||
+          p.name.toLowerCase().includes('commissioning') ||
+          p.name.toLowerCase().includes('installation'))
+    );
+    if (deployProduct) {
+      recommendations.push({
+        product: deployProduct,
+        recommendationType: 'CROSS_SELL',
+        title: 'Onsite Deployment & White-Glove Commissioning',
+        rationale:
+          'Attach turnkey onsite engineering deployment to eliminate customer installation friction and guarantee milestone signoff.',
+        expectedMarginBoost: 3.2,
+        confidenceScore: 89,
+        defaultQuantity: 1,
+      });
+    }
+  }
+
+  // 2. Software triggers: Recommend AI Anomaly Detection & ERP Connector
+  if (hasSoftware) {
+    const aiProduct = allProducts.find(
+      (p) =>
+        !existingProductIds.has(p.id) &&
+        (p.sku?.toUpperCase().includes('ANOMALY') ||
+          p.sku?.toUpperCase().includes('AI') ||
+          p.name.toLowerCase().includes('anomaly') ||
+          p.name.toLowerCase().includes('predictive') ||
+          p.name.toLowerCase().includes('ai'))
+    );
+    if (aiProduct) {
+      recommendations.push({
+        product: aiProduct,
+        recommendationType: 'UPSELL',
+        title: 'AI Predictive Deal Anomaly & Margin Optimizer',
+        rationale:
+          'Complement CPQ with AI Anomaly Detection for real-time margin risk warnings, win-rate prediction, and automated discount guidance.',
+        expectedMarginBoost: 5.5,
+        confidenceScore: 92,
+        defaultQuantity: 1,
+      });
+    }
+
+    const erpProduct = allProducts.find(
+      (p) =>
+        !existingProductIds.has(p.id) &&
+        (p.sku?.toUpperCase().includes('ERP') ||
+          p.sku?.toUpperCase().includes('INTEG') ||
+          p.name.toLowerCase().includes('erp') ||
+          p.name.toLowerCase().includes('sap') ||
+          p.name.toLowerCase().includes('connector'))
+    );
+    if (erpProduct) {
+      recommendations.push({
+        product: erpProduct,
+        recommendationType: 'CROSS_SELL',
+        title: 'Custom ERP / SAP Connector Sprint',
+        rationale:
+          'Accelerate quote-to-cash velocity with direct 2-way automated synchronization between DealFlow360 quotes and customer ERP/SAP systems.',
+        expectedMarginBoost: 4.0,
+        confidenceScore: 85,
+        defaultQuantity: 1,
+      });
+    }
+  }
+
+  // 3. Fallback / Generic: Pick any high-value services/recurring item or other products from allProducts not yet added
+  if (recommendations.length === 0) {
+    const candidateProducts = allProducts.filter((p) => !existingProductIds.has(p.id));
+    const sortedCandidates = [...candidateProducts].sort((a, b) => {
+      const aScore = a.productType === 'SERVICE' || a.productType === 'RECURRING' ? 2 : 1;
+      const bScore = b.productType === 'SERVICE' || b.productType === 'RECURRING' ? 2 : 1;
+      return bScore - aScore;
+    });
+
+    for (const cand of sortedCandidates.slice(0, 3)) {
+      recommendations.push({
+        product: cand,
+        recommendationType:
+          cand.productType === 'RECURRING' || cand.productType === 'SERVICE' ? 'CROSS_SELL' : 'UPSELL',
+        title: cand.name,
+        rationale:
+          cand.productType === 'SERVICE' || cand.productType === 'RECURRING'
+            ? 'High-margin recurring service add-on frequently co-termed with enterprise contracts to maximize recurring ARR.'
+            : 'Frequently co-purchased with selected items to complete solution deployment specifications.',
+        expectedMarginBoost: 3.5,
+        confidenceScore: 88,
+        defaultQuantity: 1,
+      });
+    }
+  }
+
+  return recommendations;
+}
 
 interface BuilderLineItem {
   product: BackendProductSummary;
@@ -56,31 +221,8 @@ export const QuoteBuilderPage: React.FC = () => {
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
 
-  // 3. Line Items State
+  // 3. Line Items State (Starts empty by default)
   const [lineItems, setLineItems] = useState<BuilderLineItem[]>([]);
-
-  // Automatically add first product once loaded if lines empty
-  useEffect(() => {
-    if (products.length > 0 && lineItems.length === 0) {
-      const p = products[0];
-      const unitPrice = parseFloat(String(p.basePrice)) || 0;
-      const qty = 1;
-      const disc = 5;
-      const gross = unitPrice * qty;
-      const discAmt = (gross * disc) / 100;
-      setLineItems([
-        {
-          product: p,
-          quantity: qty,
-          discountPercent: disc,
-          unitPrice,
-          grossAmount: gross,
-          discountAmount: discAmt,
-          netAmount: gross - discAmt,
-        },
-      ]);
-    }
-  }, [products, lineItems.length]);
 
   // 4. Live Server-Side Product Search for Catalog Modal
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -97,6 +239,138 @@ export const QuoteBuilderPage: React.FC = () => {
   });
 
   const modalProducts = searchProductData?.items || [];
+
+  // Staged multi-product selections inside the modal: map of productId -> { product, quantity }
+  const [stagedProducts, setStagedProducts] = useState<
+    Record<string, { product: BackendProductSummary; quantity: number }>
+  >({});
+
+  const handleStageQuantityChange = (product: BackendProductSummary, delta: number) => {
+    setStagedProducts((prev) => {
+      const current = prev[product.id]?.quantity || 0;
+      const next = current + delta;
+      if (next <= 0) {
+        const copy = { ...prev };
+        delete copy[product.id];
+        return copy;
+      }
+      const maxStock = product.stock !== undefined && product.stock !== null ? product.stock : Infinity;
+      const capped = Math.min(next, maxStock > 0 ? maxStock : 1);
+      return {
+        ...prev,
+        [product.id]: {
+          product,
+          quantity: capped,
+        },
+      };
+    });
+  };
+
+  const handleStageSetQuantity = (product: BackendProductSummary, qty: number) => {
+    setStagedProducts((prev) => {
+      if (qty <= 0) {
+        const copy = { ...prev };
+        delete copy[product.id];
+        return copy;
+      }
+      const maxStock = product.stock !== undefined && product.stock !== null ? product.stock : Infinity;
+      const capped = Math.min(qty, maxStock > 0 ? maxStock : 1);
+      return {
+        ...prev,
+        [product.id]: {
+          product,
+          quantity: capped,
+        },
+      };
+    });
+  };
+
+  // Cross-sell / Upsell recommendations state (computed for in-page recommendation cards)
+  const availableRecommendations = useMemo(() => {
+    return deriveCrossSellRecommendations(lineItems, products);
+  }, [lineItems, products]);
+
+  const handleConfirmAddProducts = () => {
+    const entries = Object.values(stagedProducts);
+    if (entries.length === 0) {
+      setIsProductModalOpen(false);
+      return;
+    }
+
+    const nextLineItems = [...lineItems];
+
+    for (const { product, quantity } of entries) {
+      const existingIdx = nextLineItems.findIndex((l) => l.product.id === product.id);
+      if (existingIdx >= 0) {
+        const currentItem = nextLineItems[existingIdx];
+        const newQty = currentItem.quantity + quantity;
+        const gross = currentItem.unitPrice * newQty;
+        const discAmt = (gross * currentItem.discountPercent) / 100;
+        nextLineItems[existingIdx] = {
+          ...currentItem,
+          quantity: newQty,
+          grossAmount: gross,
+          discountAmount: discAmt,
+          netAmount: gross - discAmt,
+        };
+      } else {
+        const unitPrice = parseFloat(String(product.basePrice)) || 0;
+        const gross = unitPrice * quantity;
+        const discAmt = 0;
+        nextLineItems.push({
+          product,
+          quantity,
+          discountPercent: 0,
+          unitPrice,
+          grossAmount: gross,
+          discountAmount: discAmt,
+          netAmount: gross - discAmt,
+        });
+      }
+    }
+
+    setLineItems(nextLineItems);
+    setStagedProducts({});
+    setProductSearch('');
+    setIsProductModalOpen(false);
+  };
+
+  const handleAddSingleRecommendation = (rec: CrossSellRecommendation) => {
+    setLineItems((prev) => {
+      const existingIdx = prev.findIndex((l) => l.product.id === rec.product.id);
+      if (existingIdx >= 0) {
+        const current = prev[existingIdx];
+        const newQty = current.quantity + (rec.defaultQuantity || 1);
+        const gross = current.unitPrice * newQty;
+        const discAmt = (gross * current.discountPercent) / 100;
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...current,
+          quantity: newQty,
+          grossAmount: gross,
+          discountAmount: discAmt,
+          netAmount: gross - discAmt,
+        };
+        return updated;
+      }
+      const unitPrice = parseFloat(String(rec.product.basePrice)) || 0;
+      const qty = rec.defaultQuantity || 1;
+      const gross = unitPrice * qty;
+      return [
+        ...prev,
+        {
+          product: rec.product,
+          quantity: qty,
+          discountPercent: 0,
+          unitPrice,
+          grossAmount: gross,
+          discountAmount: 0,
+          netAmount: gross,
+        },
+      ];
+    });
+    toast.success(`Added ${rec.product.name} to quotation!`);
+  };
 
   // 5. Line Item Actions
   const handleQuantityChange = (index: number, newQty: number) => {
@@ -135,30 +409,6 @@ export const QuoteBuilderPage: React.FC = () => {
 
   const handleRemoveLine = (index: number) => {
     setLineItems((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleAddProduct = (product: BackendProductSummary) => {
-    const existingIndex = lineItems.findIndex((l) => l.product.id === product.id);
-    if (existingIndex >= 0) {
-      handleQuantityChange(existingIndex, lineItems[existingIndex].quantity + 1);
-    } else {
-      const unitPrice = parseFloat(String(product.basePrice)) || 0;
-      const gross = unitPrice * 1;
-      const discAmt = 0;
-      setLineItems((prev) => [
-        ...prev,
-        {
-          product,
-          quantity: 1,
-          discountPercent: 0,
-          unitPrice,
-          grossAmount: gross,
-          discountAmount: discAmt,
-          netAmount: gross - discAmt,
-        },
-      ]);
-    }
-    setIsProductModalOpen(false);
   };
 
   // 6. Computed Totals
@@ -389,7 +639,11 @@ export const QuoteBuilderPage: React.FC = () => {
                   variant="outline"
                   size="sm"
                   leftIcon={<Plus className="h-3.5 w-3.5" />}
-                  onClick={() => setIsProductModalOpen(true)}
+                  onClick={() => {
+                    setStagedProducts({});
+                    setProductSearch('');
+                    setIsProductModalOpen(true);
+                  }}
                 >
                   Add Product
                 </Button>
@@ -417,6 +671,19 @@ export const QuoteBuilderPage: React.FC = () => {
                   <p className="text-[11px] text-gray-400 mt-0.5">
                     Click &ldquo;Add Product&rdquo; above to select items from your catalog.
                   </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3.5"
+                    leftIcon={<Plus className="h-3.5 w-3.5" />}
+                    onClick={() => {
+                      setStagedProducts({});
+                      setProductSearch('');
+                      setIsProductModalOpen(true);
+                    }}
+                  >
+                    Add Product
+                  </Button>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -535,6 +802,76 @@ export const QuoteBuilderPage: React.FC = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Smart Cross-Sell & Upsell Opportunities Section */}
+          {lineItems.length > 0 && availableRecommendations.length > 0 && (
+            <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/50 via-white to-purple-50/40 p-5 shadow-xs animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                    <Sparkles size={16} />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-[#17213a] flex items-center gap-2">
+                      AI Cross-Sell &amp; Margin Recommendations
+                      <span className="rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5">
+                        {availableRecommendations.length} available
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-gray-500">
+                      High-margin complementary add-ons and services matching your current quotation lines.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Grid of quick-add recommendation cards */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {availableRecommendations.slice(0, 4).map((rec) => (
+                  <div
+                    key={rec.product.id}
+                    className="flex flex-col justify-between rounded-xl border border-indigo-100 bg-white p-3.5 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span
+                          className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                            rec.recommendationType === 'UPSELL'
+                              ? 'bg-purple-50 text-purple-700 border-purple-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}
+                        >
+                          {rec.recommendationType === 'UPSELL' ? '⬆️ Upsell' : '➕ Cross-Sell'}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600">
+                          <TrendingUp size={11} />
+                          +{rec.expectedMarginBoost}% Margin
+                        </span>
+                      </div>
+                      <h5 className="text-xs font-bold text-[#17213a] line-clamp-1">{rec.product.name}</h5>
+                      <p className="text-[10px] text-gray-500 line-clamp-2 mt-1 leading-relaxed">
+                        {rec.rationale}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-gray-100">
+                      <span className="text-xs font-bold text-[#17213a]">
+                        {formatINR(parseFloat(String(rec.product.basePrice)) || 0)}
+                      </span>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleAddSingleRecommendation(rec)}
+                        className="text-xs py-1 px-2.5 h-7 gap-1 font-semibold"
+                      >
+                        <Plus size={12} />
+                        Add to Quote
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Commercial Summary & Governance Feedback */}
@@ -622,15 +959,16 @@ export const QuoteBuilderPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Product Selection Modal - Live Server-Side Search */}
+      {/* Product Selection Modal - Live Server-Side Search with Multi-Selection */}
       <Modal
         isOpen={isProductModalOpen}
         onClose={() => {
           setIsProductModalOpen(false);
+          setStagedProducts({});
           setProductSearch('');
         }}
-        title="Select Product from Catalog"
-        description="Search real items from your product master to add to this quotation."
+        title="Select Products from Catalog"
+        description="Search items, adjust quantities using + and -, and click OK to add multiple products."
         maxWidth="lg"
       >
         <div className="space-y-4">
@@ -662,50 +1000,169 @@ export const QuoteBuilderPage: React.FC = () => {
                 {productSearch ? `No products match "${productSearch}".` : 'No active products available.'}
               </div>
             ) : (
-              modalProducts.map((prod) => (
-                <div
-                  key={prod.id}
-                  className="flex items-center justify-between rounded-xl border border-gray-200 p-3 hover:border-blue-300 hover:bg-blue-50/20 transition"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-xs font-bold text-[#17213a]">{prod.name}</h4>
-                      {prod.stock === undefined || prod.stock === null ? null : prod.stock === 0 ? (
-                        <span className="rounded-full bg-rose-50 border border-rose-200 px-2 py-0.5 text-[9px] font-bold text-rose-700">
-                          Out of stock (0)
+              modalProducts.map((prod) => {
+                const staged = stagedProducts[prod.id];
+                const stagedQty = staged ? staged.quantity : 0;
+                const isSelected = stagedQty > 0;
+                const price = parseFloat(String(prod.basePrice)) || 0;
+                const isOutOfStock = prod.stock !== undefined && prod.stock !== null && prod.stock <= 0;
+                const maxStock = prod.stock !== undefined && prod.stock !== null ? prod.stock : Infinity;
+                const existingInQuote = lineItems.find((l) => l.product.id === prod.id);
+
+                return (
+                  <div
+                    key={prod.id}
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3 transition ${
+                      isSelected
+                        ? 'border-[#3568ed] bg-blue-50/30 shadow-2xs'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50/50'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-xs font-bold text-[#17213a]">{prod.name}</h4>
+                        {existingInQuote && (
+                          <span className="rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                            In Quote: {existingInQuote.quantity}
+                          </span>
+                        )}
+                        {prod.stock === undefined || prod.stock === null ? null : prod.stock === 0 ? (
+                          <span className="rounded-full bg-rose-50 border border-rose-200 px-2 py-0.5 text-[9px] font-bold text-rose-700">
+                            Out of stock (0)
+                          </span>
+                        ) : prod.stock <= 10 ? (
+                          <span className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[9px] font-bold text-amber-700">
+                            Low Stock: {prod.stock} left
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                            Stock: {prod.stock}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        SKU: <span className="font-mono text-gray-600 font-semibold">{prod.sku}</span> • {prod.category?.name || 'General'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                      <div className="text-right">
+                        <span className="text-xs font-bold text-[#17213a] block">
+                          {formatINR(price)}
                         </span>
-                      ) : prod.stock <= 10 ? (
-                        <span className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[9px] font-bold text-amber-700">
-                          Low Stock: {prod.stock} left
+                        {stagedQty > 1 && (
+                          <span className="text-[10px] text-gray-400 block font-medium">
+                            Subtotal: {formatINR(price * stagedQty)}
+                          </span>
+                        )}
+                      </div>
+
+                      {isOutOfStock ? (
+                        <span className="text-[11px] font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1">
+                          Unavailable
                         </span>
+                      ) : !isSelected ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStageQuantityChange(prod, 1)}
+                          className="border-gray-300 text-[#17213a] hover:border-[#3568ed] hover:text-[#3568ed] hover:bg-blue-50/50"
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1 text-[#3568ed]" />
+                          Add
+                        </Button>
                       ) : (
-                        <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
-                          Stock: {prod.stock}
-                        </span>
+                        <div className="flex items-center rounded-lg border border-[#3568ed] bg-white p-0.5 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => handleStageQuantityChange(prod, -1)}
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-[#3568ed] hover:bg-blue-50 transition cursor-pointer font-bold"
+                            title="Decrease quantity"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            max={maxStock}
+                            value={stagedQty}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              handleStageSetQuantity(prod, isNaN(val) ? 1 : val);
+                            }}
+                            className="w-10 text-center text-xs font-bold text-[#17213a] focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleStageQuantityChange(prod, 1)}
+                            disabled={stagedQty >= maxStock}
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-[#3568ed] hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer font-bold"
+                            title={stagedQty >= maxStock ? 'Max stock reached' : 'Increase quantity'}
+                          >
+                            +
+                          </button>
+                        </div>
                       )}
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      SKU: <span className="font-mono text-gray-600 font-semibold">{prod.sku}</span> • {prod.category?.name || 'General'}
-                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-[#17213a]">
-                      {formatINR(parseFloat(String(prod.basePrice)) || 0)}
-                    </span>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => {
-                        handleAddProduct(prod);
-                        setProductSearch('');
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
+          </div>
+
+          {/* Modal Footer with OK Button */}
+          <div className="flex items-center justify-between border-t border-gray-100 pt-3.5 mt-2">
+            <div>
+              {Object.keys(stagedProducts).length > 0 ? (
+                <div className="text-xs">
+                  <span className="font-bold text-[#17213a]">
+                    {Object.keys(stagedProducts).length} product{Object.keys(stagedProducts).length > 1 ? 's' : ''} selected
+                  </span>
+                  <span className="text-gray-400 mx-1.5">•</span>
+                  <span className="text-gray-600 font-medium">
+                    {Object.values(stagedProducts).reduce((s, i) => s + i.quantity, 0)} units
+                  </span>
+                  <span className="text-gray-400 mx-1.5">•</span>
+                  <span className="font-bold text-[#3568ed]">
+                    {formatINR(
+                      Object.values(stagedProducts).reduce((sum, item) => {
+                        const pr = parseFloat(String(item.product.basePrice)) || 0;
+                        return sum + pr * item.quantity;
+                      }, 0)
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">Select items and adjust quantities above.</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsProductModalOpen(false);
+                  setStagedProducts({});
+                  setProductSearch('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmAddProducts}
+                disabled={Object.keys(stagedProducts).length === 0}
+                className="gap-1.5 font-bold shadow-xs cursor-pointer"
+              >
+                <span>
+                  OK {Object.values(stagedProducts).reduce((s, i) => s + i.quantity, 0) > 0
+                    ? `(${Object.values(stagedProducts).reduce((s, i) => s + i.quantity, 0)})`
+                    : ''}
+                </span>
+              </Button>
+            </div>
           </div>
         </div>
       </Modal>

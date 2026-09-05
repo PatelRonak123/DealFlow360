@@ -24,3 +24,5 @@ export * from './inventoryTransactions.js';
 export * from './fulfillments.js';
 export * from './fulfillmentAllocations.js';
 export * from './backorders.js';
+export * from './subscriptionPlans.js';
+export * from './systemSettings.js';

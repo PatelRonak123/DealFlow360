@@ -502,16 +502,16 @@ export const QuoteDetailPage: React.FC = () => {
               </span>
             ) : undefined,
           },
-          {
-            id: 'governance',
-            label: 'Governance & Risk Diagnostics',
-            icon: <AlertTriangle className="h-4 w-4" />,
-            badge: evaluation?.approvalRequired ? (
-              <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-bold text-amber-800">
-                Review Required
-              </span>
-            ) : undefined,
-          },
+          // {
+          //   id: 'governance',
+          //   label: 'Governance & Risk Diagnostics',
+          //   icon: <AlertTriangle className="h-4 w-4" />,
+          //   badge: evaluation?.approvalRequired ? (
+          //     <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-bold text-amber-800">
+          //       Review Required
+          //     </span>
+          //   ) : undefined,
+          // },
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}

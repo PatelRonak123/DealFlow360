@@ -149,6 +149,42 @@ export class CustomerPortalRepository {
             this.customerCache.set(found.id.toLowerCase(), { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
             return res;
           }
+
+          // Multi-Customer Company Matching: If user belongs to a corporate domain, check if another user from the same organization exists
+          const domain = normalized.split('@')[1];
+          const genericDomains = new Set([
+            'gmail.com',
+            'yahoo.com',
+            'outlook.com',
+            'hotmail.com',
+            'icloud.com',
+            'aol.com',
+            'mail.com',
+            'protonmail.com',
+            'zoho.com',
+            'dealflow360.io',
+          ]);
+          if (domain && !genericDomains.has(domain)) {
+            const allCustomers = await db.query.customers.findMany({
+              with: { customerTier: true },
+            });
+            const domainMatch = allCustomers.find(
+              (c) => c.email && c.email.toLowerCase().endsWith(`@${domain}`)
+            );
+            if (domainMatch) {
+              const res: ResolvedCustomer = {
+                id: domainMatch.id,
+                companyName: domainMatch.companyName,
+                contactName: domainMatch.contactName || '',
+                email: normalized,
+                phone: domainMatch.phone || '',
+                tierName: (domainMatch as any).customerTier?.name || 'Standard Tier',
+                customerTierId: domainMatch.customerTierId,
+              };
+              this.customerCache.set(cacheKey, { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
+              return res;
+            }
+          }
         }
 
         this.customerCache.set(cacheKey, { customer: null, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
