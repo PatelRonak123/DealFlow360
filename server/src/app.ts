@@ -2,8 +2,8 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { appConfig } from './config/app.js';
-import { requestLogger, errorHandler } from './common/middleware/index.js';
-import { NotFoundError } from './common/errors/index.js';
+import { requestLogger, errorHandler, notFoundHandler } from './common/middleware/index.js';
+import { sendSuccess } from './common/utils/index.js';
 
 // Domain module routers
 import { authRouter } from './modules/auth/index.js';
@@ -30,24 +30,36 @@ import { reportsRouter } from './modules/reports/index.js';
 export function createApp(): Express {
   const app = express();
 
-  // Global Security & Logging Middleware
+  // 1. Security & Basic Middleware
   app.use(helmet());
+
+  // 2. CORS
   app.use(cors(appConfig.cors));
+
+  // 3. Body Parsers
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // 4. Request Logging
   app.use(requestLogger);
 
-  // Health Check Endpoint
-  app.get('/health', (_req: Request, res: Response) => {
-    res.status(200).json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      service: appConfig.name,
-      version: appConfig.version,
-    });
-  });
+  // 5. Health Check Endpoint (Mounted under root /health and /api/v1/health)
+  const healthHandler = (_req: Request, res: Response) => {
+    sendSuccess(
+      res,
+      {
+        status: 'healthy',
+        service: appConfig.name,
+        version: appConfig.version,
+      },
+      'DealFlow360 API is running'
+    );
+  };
 
-  // Mount Domain Module API Routers under /api/v1
+  app.get('/health', healthHandler);
+  app.get(`${appConfig.apiPrefix}/health`, healthHandler);
+
+  // 6. Mount Domain Module API Routers under /api/v1
   const prefix = appConfig.apiPrefix;
   app.use(`${prefix}/auth`, authRouter);
   app.use(`${prefix}/users`, usersRouter);
@@ -70,12 +82,10 @@ export function createApp(): Express {
   app.use(`${prefix}/audit-logs`, auditLogsRouter);
   app.use(`${prefix}/reports`, reportsRouter);
 
-  // 404 Route Catch-all
-  app.use((_req: Request, _res: Response) => {
-    throw new NotFoundError('API endpoint not found');
-  });
+  // 7. 404 Route Catch-all
+  app.use(notFoundHandler);
 
-  // Global Error Handler
+  // 8. Global Error Handler (Registered last)
   app.use(errorHandler);
 
   return app;

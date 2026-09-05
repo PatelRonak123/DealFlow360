@@ -9,25 +9,16 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/"
           element={
-            <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center', paddingTop: '4rem' }}>
-              <h1 style={{ fontSize: '2.5rem', marginBottom: '1rem', color: 'var(--primary)' }}>
+            <div className="max-w-4xl mx-auto text-center pt-16">
+              <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 text-blue-500">
                 DealFlow360
               </h1>
-              <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem' }}>
+              <p className="text-lg sm:text-xl text-slate-400 mb-8 max-w-2xl mx-auto">
                 Enterprise CPQ, Deal Governance, and Revenue Operations Platform
               </p>
-              <div
-                style={{
-                  display: 'inline-block',
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: 'var(--bg-secondary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: 'var(--success)',
-                  fontWeight: 500,
-                }}
-              >
-                ✓ Monorepo Architecture Initialized & Ready for Domain Development
+              <div className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-lg text-emerald-400 font-medium shadow-lg">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                Monorepo Architecture Initialized & Ready for Domain Development
               </div>
             </div>
           }
