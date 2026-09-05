@@ -844,15 +844,902 @@ Customers represent corporate client accounts associated with designated Custome
 
 ---
 
-## 9. RBAC Roles & Permissions Matrix
+## 9. Phase 4: Price Lists Endpoints (`/api/v1/price-lists`)
+
+Price Lists define custom pricing models per product per currency, supporting active default list management.
+
+### 9.1 List Price Lists
+* **Endpoint**: `GET /api/v1/price-lists`
+* **Access**: Protected (`price_list:read`)
+* **Query Parameters**:
+  * `page` (optional, default: `1`): Page number
+  * `limit` (optional, default: `20`): Page size
+  * `search` (optional): Filter by name substring
+  * `currency` (optional): Filter by currency code (e.g. `INR`, `USD`)
+  * `isDefault` (optional, `true` | `false`): Filter by default status
+  * `isActive` (optional, `true` | `false`): Filter by active status
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Price lists retrieved successfully",
+  "data": [
+    {
+      "id": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+      "name": "Standard Commercial Price List",
+      "description": "Default direct sales catalog",
+      "currency": "INR",
+      "isDefault": true,
+      "isActive": true,
+      "createdAt": "2026-09-05T08:00:00.000Z",
+      "updatedAt": "2026-09-05T08:00:00.000Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "totalPages": 1
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 9.2 Get Price List by ID
+* **Endpoint**: `GET /api/v1/price-lists/:id`
+* **Access**: Protected (`price_list:read`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Price list retrieved successfully",
+  "data": {
+    "id": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+    "name": "Standard Commercial Price List",
+    "description": "Default direct sales catalog",
+    "currency": "INR",
+    "isDefault": true,
+    "isActive": true,
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:00:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 9.3 Create Price List
+* **Endpoint**: `POST /api/v1/price-lists`
+* **Access**: Protected (`price_list:manage`)
+* **Request Body**:
+```json
+{
+  "name": "Enterprise Channel Price List",
+  "description": "Special pricing for certified tier partners",
+  "currency": "INR",
+  "isDefault": false,
+  "isActive": true
+}
+```
+* **Success Response (`201 Created`)**:
+```json
+{
+  "success": true,
+  "message": "Price list created successfully",
+  "data": {
+    "id": "22e1b5f0-629a-4c22-9909-08a8a4b08b02",
+    "name": "Enterprise Channel Price List",
+    "description": "Special pricing for certified tier partners",
+    "currency": "INR",
+    "isDefault": false,
+    "isActive": true,
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:00:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 9.4 Update Price List
+* **Endpoint**: `PATCH /api/v1/price-lists/:id`
+* **Access**: Protected (`price_list:manage`)
+* **Request Body**:
+```json
+{
+  "isDefault": true
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Price list updated successfully",
+  "data": {
+    "id": "22e1b5f0-629a-4c22-9909-08a8a4b08b02",
+    "name": "Enterprise Channel Price List",
+    "description": "Special pricing for certified tier partners",
+    "currency": "INR",
+    "isDefault": true,
+    "isActive": true,
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:10:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:10:00.000Z"
+}
+```
+
+### 9.5 Delete Price List
+* **Endpoint**: `DELETE /api/v1/price-lists/:id`
+* **Access**: Protected (`price_list:manage`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Price list deleted successfully",
+  "timestamp": "2026-09-05T08:10:00.000Z"
+}
+```
+
+---
+
+### 9.6 List Price List Items
+* **Endpoint**: `GET /api/v1/price-lists/:priceListId/items`
+* **Access**: Protected (`price_list:read`)
+* **Query Parameters**:
+  * `page` (optional, default: `1`): Page number
+  * `limit` (optional, default: `50`): Page size
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Price list items retrieved successfully",
+  "data": [
+    {
+      "id": "33e1b5f0-629a-4c22-9909-08a8a4b08b03",
+      "priceListId": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+      "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+      "price": "135000.00",
+      "createdAt": "2026-09-05T08:00:00.000Z",
+      "updatedAt": "2026-09-05T08:00:00.000Z",
+      "product": {
+        "id": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+        "name": "Enterprise Cloud Platform License",
+        "sku": "SKU-CLOUD-ENT-01",
+        "basePrice": "150000.00",
+        "currency": "INR",
+        "isActive": true
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 50,
+    "total": 1,
+    "totalPages": 1
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 9.7 Add Product Price to Price List
+* **Endpoint**: `POST /api/v1/price-lists/:priceListId/items`
+* **Access**: Protected (`price_list:manage`)
+* **Request Body**:
+```json
+{
+  "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+  "price": 135000.00
+}
+```
+* **Success Response (`201 Created`)**:
+```json
+{
+  "success": true,
+  "message": "Product price added to price list successfully",
+  "data": {
+    "id": "33e1b5f0-629a-4c22-9909-08a8a4b08b03",
+    "priceListId": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+    "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+    "price": "135000.00",
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:00:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 9.8 Update Product Price in Price List
+* **Endpoint**: `PATCH /api/v1/price-lists/:priceListId/items/:itemId`
+* **Access**: Protected (`price_list:manage`)
+* **Request Body**:
+```json
+{
+  "price": 128000.00
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Product price updated successfully",
+  "data": {
+    "id": "33e1b5f0-629a-4c22-9909-08a8a4b08b03",
+    "priceListId": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+    "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+    "price": "128000.00",
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:15:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:15:00.000Z"
+}
+```
+
+### 9.9 Delete Product Price from Price List
+* **Endpoint**: `DELETE /api/v1/price-lists/:priceListId/items/:itemId`
+* **Access**: Protected (`price_list:manage`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Product price removed from price list successfully",
+  "timestamp": "2026-09-05T08:15:00.000Z"
+}
+```
+
+---
+
+## 10. Phase 4: Discount Rules Endpoints (`/api/v1/discount-rules`)
+
+Discount Rules manage ceiling discount percentages (0–100%) per Customer Tier and Product Category.
+
+### 10.1 List Customer Tier Discount Rules
+* **Endpoint**: `GET /api/v1/discount-rules/customer-tiers`
+* **Access**: Protected (`discount_rule:read`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Customer tier discount rules retrieved successfully",
+  "data": [
+    {
+      "id": "44e1b5f0-629a-4c22-9909-08a8a4b08b04",
+      "customerTierId": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
+      "maxDiscountPercent": "15.00",
+      "isActive": true,
+      "createdAt": "2026-09-05T08:00:00.000Z",
+      "updatedAt": "2026-09-05T08:00:00.000Z",
+      "customerTier": {
+        "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
+        "name": "Enterprise",
+        "description": "High-volume tier with customized discount thresholds",
+        "isActive": true
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "totalPages": 1
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 10.2 Create Customer Tier Discount Rule
+* **Endpoint**: `POST /api/v1/discount-rules/customer-tiers`
+* **Access**: Protected (`discount_rule:manage`)
+* **Request Body**:
+```json
+{
+  "customerTierId": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
+  "maxDiscountPercent": 15.0
+}
+```
+* **Success Response (`201 Created`)**:
+```json
+{
+  "success": true,
+  "message": "Customer tier discount rule created successfully",
+  "data": {
+    "id": "44e1b5f0-629a-4c22-9909-08a8a4b08b04",
+    "customerTierId": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
+    "maxDiscountPercent": "15.00",
+    "isActive": true,
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:00:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 10.3 Update Customer Tier Discount Rule
+* **Endpoint**: `PATCH /api/v1/discount-rules/customer-tiers/:id`
+* **Access**: Protected (`discount_rule:manage`)
+* **Request Body**:
+```json
+{
+  "maxDiscountPercent": 18.0
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Customer tier discount rule updated successfully",
+  "data": {
+    "id": "44e1b5f0-629a-4c22-9909-08a8a4b08b04",
+    "customerTierId": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
+    "maxDiscountPercent": "18.00",
+    "isActive": true,
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:20:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:20:00.000Z"
+}
+```
+
+### 10.4 Delete Customer Tier Discount Rule
+* **Endpoint**: `DELETE /api/v1/discount-rules/customer-tiers/:id`
+* **Access**: Protected (`discount_rule:manage`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Customer tier discount rule deleted successfully",
+  "timestamp": "2026-09-05T08:20:00.000Z"
+}
+```
+
+---
+
+### 10.5 List Category Discount Rules
+* **Endpoint**: `GET /api/v1/discount-rules/categories`
+* **Access**: Protected (`discount_rule:read`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Category discount rules retrieved successfully",
+  "data": [
+    {
+      "id": "55e1b5f0-629a-4c22-9909-08a8a4b08b05",
+      "categoryId": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+      "maxDiscountPercent": "10.00",
+      "isActive": true,
+      "createdAt": "2026-09-05T08:00:00.000Z",
+      "updatedAt": "2026-09-05T08:00:00.000Z",
+      "category": {
+        "id": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+        "name": "Cloud Subscriptions",
+        "description": "SaaS recurring licenses and bundles",
+        "isActive": true
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "totalPages": 1
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 10.6 Create Category Discount Rule
+* **Endpoint**: `POST /api/v1/discount-rules/categories`
+* **Access**: Protected (`discount_rule:manage`)
+* **Request Body**:
+```json
+{
+  "categoryId": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+  "maxDiscountPercent": 10.0
+}
+```
+* **Success Response (`201 Created`)**:
+```json
+{
+  "success": true,
+  "message": "Category discount rule created successfully",
+  "data": {
+    "id": "55e1b5f0-629a-4c22-9909-08a8a4b08b05",
+    "categoryId": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+    "maxDiscountPercent": "10.00",
+    "isActive": true,
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:00:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 10.7 Update Category Discount Rule
+* **Endpoint**: `PATCH /api/v1/discount-rules/categories/:id`
+* **Access**: Protected (`discount_rule:manage`)
+* **Request Body**:
+```json
+{
+  "maxDiscountPercent": 12.5
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Category discount rule updated successfully",
+  "data": {
+    "id": "55e1b5f0-629a-4c22-9909-08a8a4b08b05",
+    "categoryId": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+    "maxDiscountPercent": "12.50",
+    "isActive": true,
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:25:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:25:00.000Z"
+}
+```
+
+### 10.8 Delete Category Discount Rule
+* **Endpoint**: `DELETE /api/v1/discount-rules/categories/:id`
+* **Access**: Protected (`discount_rule:manage`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Category discount rule deleted successfully",
+  "timestamp": "2026-09-05T08:25:00.000Z"
+}
+```
+
+### 10.9 Resolve Effective Discount Limit
+* **Endpoint**: `GET /api/v1/discount-rules/resolve`
+* **Access**: Protected (`discount_rule:read`)
+* **Query Parameters**:
+  * `customerTierId` (optional, UUID): Customer tier ID
+  * `categoryId` (optional, UUID): Product category ID
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Effective discount limit resolved successfully",
+  "data": {
+    "customerTierId": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
+    "customerTierName": "Enterprise",
+    "tierLimit": 15,
+    "categoryId": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+    "categoryName": "Cloud Subscriptions",
+    "categoryLimit": 10,
+    "effectiveLimit": 10
+  },
+  "timestamp": "2026-09-05T08:30:00.000Z"
+}
+```
+
+---
+
+## 11. Phase 4: Pricing Resolution Endpoint (`/api/v1/pricing/resolve`)
+
+Resolves the effective unit price for a given product and optional price list with automatic base price fallback.
+
+* **Endpoint**: `GET /api/v1/pricing/resolve`
+* **Access**: Protected (`price_list:read`)
+* **Query Parameters**:
+  * `productId` (required, UUID): Target product ID
+  * `priceListId` (optional, UUID): Specific price list ID
+  * `currency` (optional): Currency code (default: product's currency)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Product price resolved successfully",
+  "data": {
+    "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+    "productName": "Enterprise Cloud Platform License",
+    "sku": "SKU-CLOUD-ENT-01",
+    "basePrice": "150000.00",
+    "effectivePrice": "135000.00",
+    "priceListId": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+    "priceListName": "Standard Commercial Price List",
+    "priceSource": "PRICE_LIST",
+    "currency": "INR"
+  },
+  "timestamp": "2026-09-05T08:30:00.000Z"
+}
+```
+
+---
+
+## 12. Phase 5: Quotation Management Endpoints (`/api/v1/quotations`)
+
+The Quotations module manages B2B sales quotes, monotonic sequence-based quote numbering (`QT-000001`), historical product and pricing snapshots, line item financial calculations, status transitions (`DRAFT` → `SENT` / `CANCELLED` / `EXPIRED`), and ownership enforcement.
+
+### 12.1 List Quotations
+* **Endpoint**: `GET /api/v1/quotations`
+* **Access**: Protected (`quotation:read`)
+* **Note**: Sales representatives (`SALES_REP`) automatically see only their own draft quotations alongside non-draft quotations. Admins and Sales Managers see all quotations.
+* **Query Parameters**:
+  * `page` (optional, default: `1`): Page number
+  * `limit` (optional, default: `20`): Page size
+  * `search` (optional): Filter by quotation number or customer company name
+  * `customerId` (optional, UUID): Filter by customer ID
+  * `status` (optional, `DRAFT` | `SENT` | `CANCELLED` | `EXPIRED`): Filter by quotation status
+  * `createdById` (optional, UUID): Filter by sales rep creator
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotations retrieved successfully",
+  "data": [
+    {
+      "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "quotationNumber": "QT-000001",
+      "customerId": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+      "priceListId": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+      "createdById": "11e1b5f0-629a-4c22-9909-08a8a4b08b00",
+      "status": "DRAFT",
+      "subtotalAmount": "270000.00",
+      "discountAmount": "27000.00",
+      "totalAmount": "243000.00",
+      "currency": "INR",
+      "validUntil": "2026-10-05T00:00:00.000Z",
+      "notes": "Annual enterprise contract draft",
+      "termsAndConditions": "Net 30 days payment terms.",
+      "sentAt": null,
+      "cancelledAt": null,
+      "cancellationReason": null,
+      "createdAt": "2026-09-05T08:00:00.000Z",
+      "updatedAt": "2026-09-05T08:00:00.000Z",
+      "customer": {
+        "id": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+        "companyName": "Acme Global Industries",
+        "email": "alice@acme.com"
+      },
+      "createdBy": {
+        "id": "11e1b5f0-629a-4c22-9909-08a8a4b08b00",
+        "firstName": "John",
+        "lastName": "Doe",
+        "email": "john.rep@dealflow360.com"
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "totalPages": 1
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 12.2 Get Quotation by ID
+* **Endpoint**: `GET /api/v1/quotations/:id`
+* **Access**: Protected (`quotation:read`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation retrieved successfully",
+  "data": {
+    "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "quotationNumber": "QT-000001",
+    "customerId": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+    "priceListId": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+    "createdById": "11e1b5f0-629a-4c22-9909-08a8a4b08b00",
+    "status": "DRAFT",
+    "subtotalAmount": "270000.00",
+    "discountAmount": "27000.00",
+    "totalAmount": "243000.00",
+    "currency": "INR",
+    "validUntil": "2026-10-05T00:00:00.000Z",
+    "notes": "Annual enterprise contract draft",
+    "termsAndConditions": "Net 30 days payment terms.",
+    "sentAt": null,
+    "cancelledAt": null,
+    "cancellationReason": null,
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:00:00.000Z",
+    "customer": {
+      "id": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+      "companyName": "Acme Global Industries",
+      "email": "alice@acme.com"
+    },
+    "createdBy": {
+      "id": "11e1b5f0-629a-4c22-9909-08a8a4b08b00",
+      "firstName": "John",
+      "lastName": "Doe",
+      "email": "john.rep@dealflow360.com"
+    },
+    "items": [
+      {
+        "id": "99e1b5f0-629a-4c22-9909-08a8a4b08b99",
+        "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+        "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+        "productNameSnapshot": "Enterprise Cloud Platform License",
+        "skuSnapshot": "SKU-CLOUD-ENT-01",
+        "quantity": 2,
+        "unitPrice": "135000.00",
+        "grossAmount": "270000.00",
+        "discountPercent": "10.00",
+        "discountAmount": "27000.00",
+        "netAmount": "243000.00",
+        "lineNumber": 1,
+        "createdAt": "2026-09-05T08:00:00.000Z",
+        "updatedAt": "2026-09-05T08:00:00.000Z"
+      }
+    ]
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 12.3 Create Quotation
+* **Endpoint**: `POST /api/v1/quotations`
+* **Access**: Protected (`quotation:create`)
+* **Request Body**:
+```json
+{
+  "customerId": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+  "priceListId": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+  "currency": "INR",
+  "validUntil": "2026-10-05T00:00:00.000Z",
+  "notes": "Annual enterprise contract draft",
+  "termsAndConditions": "Net 30 days payment terms.",
+  "items": [
+    {
+      "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+      "quantity": 2,
+      "discountPercent": 10.0
+    }
+  ]
+}
+```
+* **Success Response (`201 Created`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation created successfully",
+  "data": {
+    "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "quotationNumber": "QT-000001",
+    "customerId": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+    "priceListId": "11e1b5f0-629a-4c22-9909-08a8a4b08b01",
+    "createdById": "11e1b5f0-629a-4c22-9909-08a8a4b08b00",
+    "status": "DRAFT",
+    "subtotalAmount": "270000.00",
+    "discountAmount": "27000.00",
+    "totalAmount": "243000.00",
+    "currency": "INR",
+    "validUntil": "2026-10-05T00:00:00.000Z",
+    "notes": "Annual enterprise contract draft",
+    "termsAndConditions": "Net 30 days payment terms.",
+    "createdAt": "2026-09-05T08:00:00.000Z",
+    "updatedAt": "2026-09-05T08:00:00.000Z",
+    "items": [
+      {
+        "id": "99e1b5f0-629a-4c22-9909-08a8a4b08b99",
+        "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+        "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+        "productNameSnapshot": "Enterprise Cloud Platform License",
+        "skuSnapshot": "SKU-CLOUD-ENT-01",
+        "quantity": 2,
+        "unitPrice": "135000.00",
+        "grossAmount": "270000.00",
+        "discountPercent": "10.00",
+        "discountAmount": "27000.00",
+        "netAmount": "243000.00",
+        "lineNumber": 1,
+        "createdAt": "2026-09-05T08:00:00.000Z",
+        "updatedAt": "2026-09-05T08:00:00.000Z"
+      }
+    ]
+  },
+  "timestamp": "2026-09-05T08:00:00.000Z"
+}
+```
+
+### 12.4 Update Quotation Header
+* **Endpoint**: `PATCH /api/v1/quotations/:id`
+* **Access**: Protected (`quotation:update`)
+* **Constraint**: Quotation must be in `DRAFT` status.
+* **Request Body**:
+```json
+{
+  "notes": "Updated negotiation notes",
+  "termsAndConditions": "Net 45 days payment terms."
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation updated successfully",
+  "data": {
+    "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "notes": "Updated negotiation notes",
+    "termsAndConditions": "Net 45 days payment terms.",
+    "updatedAt": "2026-09-05T08:10:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:10:00.000Z"
+}
+```
+
+### 12.5 Update Quotation Status
+* **Endpoint**: `PATCH /api/v1/quotations/:id/status`
+* **Access**: Protected (`quotation:update`)
+* **Request Body**:
+```json
+{
+  "status": "EXPIRED"
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation status updated successfully",
+  "data": {
+    "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "status": "EXPIRED",
+    "updatedAt": "2026-09-05T08:15:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:15:00.000Z"
+}
+```
+
+### 12.6 Send Quotation
+* **Endpoint**: `POST /api/v1/quotations/:id/send`
+* **Access**: Protected (`quotation:send`)
+* **Constraint**: Quotation must be in `DRAFT` status and must contain at least 1 line item.
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation sent to customer successfully",
+  "data": {
+    "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "status": "SENT",
+    "sentAt": "2026-09-05T08:20:00.000Z",
+    "updatedAt": "2026-09-05T08:20:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:20:00.000Z"
+}
+```
+
+### 12.7 Cancel Quotation
+* **Endpoint**: `POST /api/v1/quotations/:id/cancel`
+* **Access**: Protected (`quotation:update`)
+* **Constraint**: Cannot cancel an already `CANCELLED` quotation.
+* **Request Body**:
+```json
+{
+  "reason": "Customer opted for different delivery schedule"
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation cancelled successfully",
+  "data": {
+    "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "status": "CANCELLED",
+    "cancelledAt": "2026-09-05T08:25:00.000Z",
+    "cancellationReason": "Customer opted for different delivery schedule",
+    "updatedAt": "2026-09-05T08:25:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:25:00.000Z"
+}
+```
+
+### 12.8 Delete Quotation
+* **Endpoint**: `DELETE /api/v1/quotations/:id`
+* **Access**: Protected (`quotation:delete`)
+* **Constraint**: Only `DRAFT` quotations may be deleted.
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation deleted successfully",
+  "timestamp": "2026-09-05T08:30:00.000Z"
+}
+```
+
+---
+
+### 12.9 Add Quotation Line Item
+* **Endpoint**: `POST /api/v1/quotations/:id/items`
+* **Access**: Protected (`quotation:update`)
+* **Constraint**: Quotation must be in `DRAFT` status. Automatically recalculates quotation header subtotal, discount, and total amounts.
+* **Request Body**:
+```json
+{
+  "productId": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+  "quantity": 1,
+  "discountPercent": 5.0
+}
+```
+* **Success Response (`201 Created`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation item added successfully",
+  "data": {
+    "id": "aa11b5f0-629a-4c22-9909-08a8a4b08b01",
+    "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "productId": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+    "productNameSnapshot": "Professional Architecture Review",
+    "skuSnapshot": "SKU-SRV-ARCH-01",
+    "quantity": 1,
+    "unitPrice": "95000.00",
+    "grossAmount": "95000.00",
+    "discountPercent": "5.00",
+    "discountAmount": "4750.00",
+    "netAmount": "90250.00",
+    "lineNumber": 2,
+    "createdAt": "2026-09-05T08:35:00.000Z",
+    "updatedAt": "2026-09-05T08:35:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:35:00.000Z"
+}
+```
+
+### 12.10 Update Quotation Line Item
+* **Endpoint**: `PATCH /api/v1/quotations/:id/items/:itemId`
+* **Access**: Protected (`quotation:update`)
+* **Constraint**: Quotation must be in `DRAFT` status.
+* **Request Body**:
+```json
+{
+  "quantity": 3,
+  "discountPercent": 8.0
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation item updated successfully",
+  "data": {
+    "id": "aa11b5f0-629a-4c22-9909-08a8a4b08b01",
+    "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "productId": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+    "quantity": 3,
+    "unitPrice": "95000.00",
+    "grossAmount": "285000.00",
+    "discountPercent": "8.00",
+    "discountAmount": "22800.00",
+    "netAmount": "262200.00",
+    "updatedAt": "2026-09-05T08:40:00.000Z"
+  },
+  "timestamp": "2026-09-05T08:40:00.000Z"
+}
+```
+
+### 12.11 Delete Quotation Line Item
+* **Endpoint**: `DELETE /api/v1/quotations/:id/items/:itemId`
+* **Access**: Protected (`quotation:update`)
+* **Constraint**: Quotation must be in `DRAFT` status.
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation item deleted successfully",
+  "timestamp": "2026-09-05T08:40:00.000Z"
+}
+```
+
+---
+
+## 13. RBAC Roles & Permissions Matrix
 
 ### Roles
 | Role | Code | Description |
 |---|---|---|
 | Administrator | `ADMIN` | Full administrative bypass and access across all modules |
-| Sales Representative | `SALES_REP` | Create/edit quotations, view customers, customer tiers, categories, products, inventory |
-| Sales Manager | `SALES_MANAGER` | Quote approvals, discount governance, manage customers, categories, products, pricing rules |
-| Finance & Operations | `FINANCE_OPERATIONS` | Billing, payment processing, pricing rules, discount overrides, view catalog and customers |
+| Sales Representative | `SALES_REP` | Create/edit quotations, view catalog, price lists, discount rules, inventory |
+| Sales Manager | `SALES_MANAGER` | Quote approvals, discount governance, manage catalog, price lists, discount rules |
+| Finance & Operations | `FINANCE_OPERATIONS` | Billing, payment processing, manage pricing rules, price lists, discount overrides |
 | Customer | `CUSTOMER` | Customer portal viewing of quotes and invoices |
 
 ### Core Permissions
@@ -868,9 +1755,15 @@ Customers represent corporate client accounts associated with designated Custome
 | `product:manage` | Create, update, and manage products | `ADMIN`, `SALES_MANAGER` |
 | `customer:read` | View customer directory and profiles | `ADMIN`, `SALES_REP`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `customer:manage` | Create, update, and manage customer accounts | `ADMIN`, `SALES_MANAGER` |
+| `price_list:read` | View price lists and custom item pricing | `ADMIN`, `SALES_REP`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
+| `price_list:manage` | Create, update, and manage price lists & items | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
+| `discount_rule:read` | View customer tier and category discount rules | `ADMIN`, `SALES_REP`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
+| `discount_rule:manage` | Configure tier & category discount limits | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `quotation:create` | Create quote drafts | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
 | `quotation:read` | Read quotation details | `ADMIN`, `SALES_REP`, `SALES_MANAGER`, `FINANCE_OPERATIONS`, `CUSTOMER` |
 | `quotation:update` | Update quotation lines and terms | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
+| `quotation:send` | Send finalized draft quotations to customers | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
+| `quotation:delete` | Delete draft quotations | `ADMIN`, `SALES_MANAGER` |
 | `quotation:approve` | Approve quotation workflows | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `pricing:manage` | Configure price lists and rules | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `discount:approve` | Approve discount thresholds | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
@@ -885,7 +1778,7 @@ Customers represent corporate client accounts associated with designated Custome
 
 ---
 
-## 10. Error Codes
+## 14. Error Codes
 
 | Code | HTTP Status | Description |
 |---|---|---|
@@ -898,4 +1791,5 @@ Customers represent corporate client accounts associated with designated Custome
 | `NOT_FOUND` | `404` | Target resource was not found |
 | `CONFLICT` | `409` | State conflict (e.g. duplicate name/SKU, or deletion of entity with active dependencies) |
 | `INTERNAL_ERROR` | `500` | Unhandled server exception |
+
 

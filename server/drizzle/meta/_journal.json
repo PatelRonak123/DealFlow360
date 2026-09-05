@@ -15,6 +15,27 @@
       "when": 1788596247370,
       "tag": "0001_modern_boomerang",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788597643313,
+      "tag": "0002_whole_blue_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788599896858,
+      "tag": "0003_sparkling_lila_cheney",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788601018439,
+      "tag": "0004_regular_lady_ursula",
+      "breakpoints": true
     }
   ]
 }
