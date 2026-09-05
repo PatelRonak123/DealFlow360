@@ -9,10 +9,10 @@ import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 // Dashboards
 import { SalesRepDashboard } from '@/features/dashboard/components/SalesRepDashboard';
 import {
-  SalesManagerDashboard,
   FinanceDashboard,
   AdminDashboard,
 } from '@/features/dashboard/components/OtherRoleDashboards';
+import { SalesManagerDashboard } from '@/features/dashboard/components/SalesManagerDashboard';
 
 // Customer Portal Pages
 import {
@@ -38,6 +38,7 @@ import { QuoteBuilderPage } from '@/features/quotations/pages/QuoteBuilderPage';
 import { QuoteDetailPage } from '@/features/quotations/pages/QuoteDetailPage';
 import { CustomersListPage } from '@/features/customers/pages/CustomersListPage';
 import { ProductsCatalogPage } from '@/features/products/pages/ProductsCatalogPage';
+import { ApprovalsQueuePage } from '@/features/approvals';
 
 // Access Control
 import { RoleGuard } from '@/components/common/RoleGuard';
@@ -225,12 +226,7 @@ export const AppRoutes: React.FC = () => {
                 allowedRoles={[ROLES.SALES_MANAGER, ROLES.FINANCE, ROLES.ADMIN]}
                 moduleName="Multi-Tier Approvals Queue"
               >
-                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
-                  <h2 className="text-xl font-bold text-[#17213a]">Executive Approvals Queue</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Accessible to Sales Managers, Finance Officers, and Administrators. Sales reps track approval status directly on each quotation.
-                  </p>
-                </div>
+                <ApprovalsQueuePage />
               </RoleGuard>
             }
           />

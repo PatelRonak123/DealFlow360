@@ -246,4 +246,4 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
       </div>
     </header>
   );
-}
+}

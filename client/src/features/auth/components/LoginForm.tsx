@@ -111,7 +111,7 @@ export const LoginForm: React.FC = () => {
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div>
           <label htmlFor="email" className="mb-2 block text-sm font-semibold text-[#27334A]">
-            Work email
+            Email
           </label>
           <div className="relative">
             <LuMail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9AA7BA]" size={18} />
@@ -188,9 +188,6 @@ export const LoginForm: React.FC = () => {
         </Link>
       </p>
 
-      <p className="mt-10 text-center text-xs text-[#AAB5C5]">
-        By continuing, you agree to our Terms and Privacy Policy.
-      </p>
     </div>
   );
 };

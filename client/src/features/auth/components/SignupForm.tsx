@@ -9,6 +9,7 @@ import {
   LuEyeOff,
   LuLockKeyhole,
   LuMail,
+  LuShield,
   LuUser,
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
@@ -23,6 +24,7 @@ export const SignupForm: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'SALES_MANAGER' | 'SALES_REP'>('SALES_MANAGER');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export const SignupForm: React.FC = () => {
         name: name.trim(),
         email: email.trim(),
         password,
+        role,
       });
 
       showProgressToast('Configuring workspace...', 80, 'signup-progress');
@@ -125,7 +128,7 @@ export const SignupForm: React.FC = () => {
               id="signup-name"
               name="name"
               type="text"
-              placeholder="Jane Doe"
+              placeholder="Rajesh Malhotra"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -133,10 +136,10 @@ export const SignupForm: React.FC = () => {
             />
           </div>
         </div>
-
+  
         <div>
           <label htmlFor="signup-email" className="mb-2 block text-sm font-semibold text-[#27334A]">
-            Work email
+            Email
           </label>
           <div className="relative">
             <LuMail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9AA7BA]" size={18} />
@@ -144,13 +147,32 @@ export const SignupForm: React.FC = () => {
               id="signup-email"
               name="email"
               type="email"
-              placeholder="you@company.com"
+              placeholder="manager@dealflow360.com"
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               className="h-12 w-full rounded-xl border border-[#DCE4F0] bg-white/80 pl-11 pr-4 text-sm text-[#172033] outline-none transition placeholder:text-[#AAB5C5] focus:border-[#3165E8] focus:bg-white focus:ring-4 focus:ring-[#3165E8]/10"
             />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="signup-role" className="mb-2 block text-sm font-semibold text-[#27334A]">
+            Role in Workspace
+          </label>
+          <div className="relative">
+            <LuShield className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9AA7BA]" size={18} />
+            <select
+              id="signup-role"
+              name="role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as 'SALES_MANAGER' | 'SALES_REP')}
+              className="h-12 w-full rounded-xl border border-[#DCE4F0] bg-white/80 pl-11 pr-4 text-sm text-[#172033] outline-none transition focus:border-[#3165E8] focus:bg-white focus:ring-4 focus:ring-[#3165E8]/10"
+            >
+              <option value="SALES_MANAGER">Sales Manager (Approvals & Quota Oversight)</option>
+              <option value="SALES_REP">Sales Representative (Quotes & Pipeline)</option>
+            </select>
           </div>
         </div>
 
