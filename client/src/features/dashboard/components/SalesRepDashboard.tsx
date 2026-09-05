@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileText,
@@ -19,97 +19,33 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/features/auth';
-import { useQuotationsList } from '@/features/quotations/hooks/useQuotationsQuery';
+import { useDashboardStats } from '../hooks/useDashboardStats';
 import { formatCompactINR, formatINR } from '@/utils/formatters';
 
 export const SalesRepDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: quoteData } = useQuotationsList({ limit: 50 });
-  const quotations = quoteData?.items || [];
-
-  // Dynamic calculations from live quotations API
-  const activeQuotes = quotations.filter(
-    (q) => q.status !== 'CANCELLED' && q.status !== 'EXPIRED' && q.status !== 'REJECTED'
-  );
-
-  const totalPipeline = activeQuotes.reduce(
-    (acc, q) => acc + (parseFloat(String(q.totalAmount)) || 0),
-    0
-  );
-
-  const pendingApprovalsCount = quotations.filter(
-    (q) => q.status === 'PENDING_MANAGER_APPROVAL' || q.status === 'PENDING_FINANCE_APPROVAL'
-  ).length;
-
-  const activeQuotesCount = activeQuotes.length;
-
-  // Quotes requiring sales rep governance attention
-  const attentionQuotes = quotations.filter(
-    (q) =>
-      q.status === 'PENDING_MANAGER_APPROVAL' ||
-      q.status === 'PENDING_FINANCE_APPROVAL' ||
-      (parseFloat(String(q.discountAmount)) || 0) > 0
-  );
-
-  // Pipeline velocity breakdown by stage
-  const draftQuotes = quotations.filter((q) => q.status === 'DRAFT');
-  const approvalQuotes = quotations.filter(
-    (q) => q.status === 'PENDING_MANAGER_APPROVAL' || q.status === 'PENDING_FINANCE_APPROVAL'
-  );
-  const approvedQuotes = quotations.filter((q) => q.status === 'APPROVED');
-  const sentQuotes = quotations.filter((q) => q.status === 'SENT');
-
-  const stageBreakdown = [
-    {
-      stage: 'Draft Quotes',
-      dealsCount: draftQuotes.length,
-      value: draftQuotes.reduce((s, q) => s + (parseFloat(String(q.totalAmount)) || 0), 0),
-      color: 'bg-slate-400',
-    },
-    {
-      stage: 'Approval Review',
-      dealsCount: approvalQuotes.length,
-      value: approvalQuotes.reduce((s, q) => s + (parseFloat(String(q.totalAmount)) || 0), 0),
-      color: 'bg-amber-500',
-    },
-    {
-      stage: 'Approved Proposals',
-      dealsCount: approvedQuotes.length,
-      value: approvedQuotes.reduce((s, q) => s + (parseFloat(String(q.totalAmount)) || 0), 0),
-      color: 'bg-emerald-500',
-    },
-    {
-      stage: 'Sent to Customer',
-      dealsCount: sentQuotes.length,
-      value: sentQuotes.reduce((s, q) => s + (parseFloat(String(q.totalAmount)) || 0), 0),
-      color: 'bg-purple-500',
-    },
-  ];
-
-  // Top customer accounts from real quotations
-  const topAccounts = useMemo(() => {
-    const map = new Map<string, { name: string; tier: string; quotes: number; value: number }>();
-    quotations.forEach((q) => {
-      const name = q.customer?.companyName || 'Enterprise Customer';
-      const tier = q.customer?.customerTier?.name || 'Standard';
-      const val = parseFloat(String(q.totalAmount)) || 0;
-      if (!map.has(name)) {
-        map.set(name, { name, tier, quotes: 1, value: val });
-      } else {
-        const item = map.get(name)!;
-        item.quotes += 1;
-        item.value += val;
-      }
-    });
-    return Array.from(map.values()).slice(0, 3);
-  }, [quotations]);
+  const {
+    totalPipeline,
+    formattedPipeline,
+    pipelineDelta,
+    activeQuotesCount,
+    totalQuotesCount,
+    pendingApprovalsCount,
+    formattedAverageMargin,
+    marginSubtext,
+    marginTrend,
+    attentionQuotes,
+    recentActiveQuotes,
+    stageBreakdown,
+    topAccounts,
+  } = useDashboardStats();
 
   const metrics = [
     {
       label: 'My Pipeline Value',
-      value: formatCompactINR(totalPipeline),
-      subtext: '+14% vs last month',
+      value: formattedPipeline,
+      subtext: pipelineDelta,
       icon: IndianRupee,
       trend: 'up',
       tone: 'blue',
@@ -117,7 +53,7 @@ export const SalesRepDashboard: React.FC = () => {
     {
       label: 'Active Quotations',
       value: activeQuotesCount.toString(),
-      subtext: `${quoteData?.total || quotations.length} total quotations`,
+      subtext: `${totalQuotesCount} total quotations`,
       icon: FileText,
       trend: 'up',
       tone: 'indigo',
@@ -125,17 +61,17 @@ export const SalesRepDashboard: React.FC = () => {
     {
       label: 'Pending Approvals',
       value: pendingApprovalsCount.toString(),
-      subtext: 'In review by Manager/Finance',
+      subtext: pendingApprovalsCount > 0 ? 'In review by Manager/Finance' : 'All approvals cleared',
       icon: Clock,
       trend: pendingApprovalsCount > 0 ? 'warning' : 'neutral',
       tone: 'amber',
     },
     {
       label: 'Average Deal Margin',
-      value: '34.2%',
-      subtext: 'Target: > 30% gross margin',
+      value: formattedAverageMargin,
+      subtext: marginSubtext,
       icon: Percent,
-      trend: 'up',
+      trend: marginTrend,
       tone: 'emerald',
     },
   ];
@@ -152,23 +88,35 @@ export const SalesRepDashboard: React.FC = () => {
     'draft' | 'pending' | 'approved' | 'negotiating' | 'won' | 'rejected' | 'default'
   > = {
     DRAFT: 'draft',
+    PENDING_APPROVAL: 'pending',
     PENDING_MANAGER_APPROVAL: 'pending',
     PENDING_FINANCE_APPROVAL: 'pending',
     APPROVED: 'approved',
     SENT: 'negotiating',
+    NEGOTIATION: 'negotiating',
+    WON: 'won',
+    CONFIRMED: 'won',
+    ORDERED: 'won',
     REJECTED: 'rejected',
     CANCELLED: 'rejected',
+    LOST: 'rejected',
     EXPIRED: 'default',
   };
 
   const statusLabelMap: Record<string, string> = {
     DRAFT: 'Draft',
+    PENDING_APPROVAL: 'Pending Approval',
     PENDING_MANAGER_APPROVAL: 'Manager Review',
     PENDING_FINANCE_APPROVAL: 'Finance Review',
     APPROVED: 'Approved',
     SENT: 'Sent',
+    NEGOTIATION: 'In Negotiation',
+    WON: 'Won',
+    CONFIRMED: 'Confirmed',
+    ORDERED: 'Ordered',
     REJECTED: 'Rejected',
     CANCELLED: 'Cancelled',
+    LOST: 'Lost',
     EXPIRED: 'Expired',
   };
 
@@ -305,7 +253,8 @@ export const SalesRepDashboard: React.FC = () => {
             <div>
               <CardTitle>My Active Quotations</CardTitle>
               <p className="mt-0.5 text-xs text-[#71809f]">
-                Live CPQ quotes retrieved from backend pricing and approval service
+                {/* Note: Update copy to "Live CPQ quotes retrieved from backend pricing and approval service" once dedicated dashboard endpoint is live */}
+                Your 5 most recent active quotations
               </p>
             </div>
             <Button
@@ -319,7 +268,7 @@ export const SalesRepDashboard: React.FC = () => {
           </CardHeader>
 
           <CardContent>
-            {quotations.length === 0 ? (
+            {recentActiveQuotes.length === 0 ? (
               <div className="py-8 text-center text-xs text-gray-400">
                 No active quotations found. Create your first quote using the button above.
               </div>
@@ -336,7 +285,7 @@ export const SalesRepDashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#f2f5fb]">
-                    {quotations.map((quote) => {
+                    {recentActiveQuotes.map((quote) => {
                       const totalNum = parseFloat(String(quote.totalAmount)) || 0;
                       const customerName = quote.customer?.companyName || 'Unassigned Customer';
 
