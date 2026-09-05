@@ -1,4 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
+import { AuthUserContext } from '../../modules/rbac/types/index.js';
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthUserContext;
+    }
+  }
+}
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
