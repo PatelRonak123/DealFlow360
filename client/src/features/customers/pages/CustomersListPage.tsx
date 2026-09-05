@@ -14,11 +14,16 @@ import {
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Pagination } from '@/components/ui/Pagination';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useCustomers } from '../hooks/useCustomers';
 
 export const CustomersListPage: React.FC = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const debouncedSearch = useDebounce(search, 300);
 
   const {
     data,
@@ -27,11 +32,17 @@ export const CustomersListPage: React.FC = () => {
     error,
     refetch,
   } = useCustomers({
-    search: search.trim() || undefined,
+    page: currentPage,
+    pageSize,
+    search: debouncedSearch.trim() || undefined,
     status: 'ACTIVE',
   });
 
   const customers = data?.items || [];
+  const total = data?.total || 0;
+  const totalPages = data?.totalPages || 1;
+  const startIdx = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endIdx = Math.min(currentPage * pageSize, total);
 
   const getTierBadgeVariant = (tierName?: string): 'gold' | 'silver' | 'bronze' | 'default' => {
     if (!tierName) return 'default';
@@ -72,14 +83,18 @@ export const CustomersListPage: React.FC = () => {
             type="text"
             placeholder="Search accounts by company name, contact, or email..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
             className="w-full bg-transparent text-xs text-[#17213a] placeholder:text-gray-400 focus:outline-none"
           />
         </div>
 
         <div className="flex items-center gap-3 text-xs text-[#59657d]">
           <span>
-            Showing <strong className="text-[#17213a]">{customers.length}</strong> active accounts
+            Showing <strong className="text-[#17213a]">{total === 0 ? '0' : `${startIdx} to ${endIdx}`}</strong> of{' '}
+            <strong className="text-[#17213a]">{total}</strong> active accounts
           </span>
           <button
             type="button"
@@ -161,78 +176,98 @@ export const CustomersListPage: React.FC = () => {
 
       {/* Real Customer Accounts Grid */}
       {!isLoading && !isError && customers.length > 0 && (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {customers.map((customer) => {
-            const tierName = customer.customerTier?.name || 'Standard Tier';
-            const tierBadge = getTierBadgeVariant(tierName);
+        <div className="space-y-6">
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {customers.map((customer) => {
+              const tierName = customer.customerTier?.name || 'Standard Tier';
+              const tierBadge = getTierBadgeVariant(tierName);
 
-            return (
-              <Card key={customer.id} hoverable className="flex flex-col justify-between">
-                <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#3568ed]">
-                        <Building2 className="h-5 w-5" />
-                      </span>
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-[#17213a] truncate" title={customer.companyName}>
-                          {customer.companyName}
-                        </h3>
-                        <div className="flex items-center gap-1 text-[11px] text-[#71809f]">
-                          <User className="h-3 w-3 shrink-0 text-gray-400" />
-                          <span className="truncate">{customer.contactName || 'Primary Contact'}</span>
+              return (
+                <Card key={customer.id} hoverable className="flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#3568ed]">
+                          <Building2 className="h-5 w-5" />
+                        </span>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-bold text-[#17213a] truncate" title={customer.companyName}>
+                            {customer.companyName}
+                          </h3>
+                          <div className="flex items-center gap-1 text-[11px] text-[#71809f]">
+                            <User className="h-3 w-3 shrink-0 text-gray-400" />
+                            <span className="truncate">{customer.contactName || 'Primary Contact'}</span>
+                          </div>
                         </div>
                       </div>
+                      <Badge variant={tierBadge} size="sm">
+                        {tierName}
+                      </Badge>
                     </div>
-                    <Badge variant={tierBadge} size="sm">
-                      {tierName}
-                    </Badge>
+
+                    <div className="mt-4 space-y-2 text-xs border-t border-gray-100 pt-3 text-gray-600">
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                        <span className="truncate" title={customer.email}>{customer.email}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                        <span>{customer.phone || 'Phone not registered'}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-xl bg-[#f8faff] border border-[#eef2fc] p-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">Tier Governance:</span>
+                        <strong className="text-blue-700 font-semibold">{tierName}</strong>
+                      </div>
+                      {customer.customerTier?.description && (
+                        <p className="mt-1 text-[10px] text-gray-500 line-clamp-2">
+                          {customer.customerTier.description}
+                        </p>
+                      )}
+                      <div className="mt-2 flex items-center justify-between pt-2 border-t border-blue-100/60 text-[11px]">
+                        <span className="text-gray-500">Account Status:</span>
+                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
+                          <ShieldCheck className="h-3 w-3" />
+                          {customer.status}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-4 space-y-2 text-xs border-t border-gray-100 pt-3 text-gray-600">
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                      <span className="truncate" title={customer.email}>{customer.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                      <span>{customer.phone || 'Phone not registered'}</span>
-                    </div>
+                  <div className="mt-4 pt-3 border-t border-gray-100">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="w-full text-xs"
+                      onClick={() => navigate(`/quotations/new?customerId=${customer.id}`)}
+                    >
+                      Create Quote for {customer.companyName.split(' ')[0]}
+                    </Button>
                   </div>
+                </Card>
+              );
+            })}
+          </div>
 
-                  <div className="mt-4 rounded-xl bg-[#f8faff] border border-[#eef2fc] p-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-500">Tier Governance:</span>
-                      <strong className="text-blue-700 font-semibold">{tierName}</strong>
-                    </div>
-                    {customer.customerTier?.description && (
-                      <p className="mt-1 text-[10px] text-gray-500 line-clamp-2">
-                        {customer.customerTier.description}
-                      </p>
-                    )}
-                    <div className="mt-2 flex items-center justify-between pt-2 border-t border-blue-100/60 text-[11px]">
-                      <span className="text-gray-500">Account Status:</span>
-                      <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
-                        <ShieldCheck className="h-3 w-3" />
-                        {customer.status}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-gray-100">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="w-full text-xs"
-                    onClick={() => navigate(`/quotations/new?customerId=${customer.id}`)}
-                  >
-                    Create Quote for {customer.companyName.split(' ')[0]}
-                  </Button>
-                </div>
-              </Card>
-            );
-          })}
+          {/* Server-Side Pagination */}
+          <div className="rounded-2xl border border-[#e7ebf7] bg-white p-4 shadow-2xs">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={total}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[10, 20, 50]}
+              itemLabel="accounts"
+              isLoading={isLoading}
+            />
+          </div>
         </div>
       )}
     </div>

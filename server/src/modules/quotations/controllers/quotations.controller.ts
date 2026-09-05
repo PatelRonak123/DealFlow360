@@ -6,6 +6,9 @@ import {
   addQuotationItemSchema,
   updateQuotationItemSchema,
   quotationQuerySchema,
+  negotiateQuotationSchema,
+  reviseQuotationSchema,
+  quotationOutcomeSchema,
 } from '../validators/quotation.validator.js';
 import { sendSuccess } from '../../../common/utils/index.js';
 import { HttpStatus } from '../../../common/constants/httpStatus.js';
@@ -143,6 +146,77 @@ export class QuotationsController {
         req.user
       );
       sendSuccess(res, result, 'Quotation item removed successfully', HttpStatus.OK);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // --- Workflow Endpoints ---
+
+  async send(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const updated = await quotationsService.sendQuotation(req.params.id, req.user);
+      sendSuccess(res, updated, 'Quotation sent to customer successfully', HttpStatus.OK);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async negotiate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const input = negotiateQuotationSchema.parse(req.body);
+      const updated = await quotationsService.negotiateQuotation(req.params.id, input, req.user);
+      sendSuccess(res, updated, 'Quotation moved to negotiation successfully', HttpStatus.OK);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async revise(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const input = reviseQuotationSchema.parse(req.body);
+      const revised = await quotationsService.reviseQuotation(req.params.id, input, req.user);
+      sendSuccess(res, revised, 'Revised quotation created successfully', HttpStatus.CREATED);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async markWon(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const input = quotationOutcomeSchema.parse(req.body);
+      const updated = await quotationsService.markQuotationWon(req.params.id, input, req.user);
+      sendSuccess(res, updated, 'Quotation marked as Won successfully', HttpStatus.OK);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async markLost(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+
+      const input = quotationOutcomeSchema.parse(req.body);
+      const updated = await quotationsService.markQuotationLost(req.params.id, input, req.user);
+      sendSuccess(res, updated, 'Quotation marked as Lost', HttpStatus.OK);
     } catch (error) {
       next(error);
     }

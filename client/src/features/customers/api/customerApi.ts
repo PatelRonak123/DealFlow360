@@ -5,19 +5,26 @@ import { BackendCustomerSummary } from '@/features/quotations/types/quotationApi
 export interface CustomerQueryParams {
   page?: number;
   limit?: number;
+  pageSize?: number;
   search?: string;
   customerTierId?: string;
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
 export const customerApi = {
-  getCustomers: async (params?: CustomerQueryParams): Promise<{ items: BackendCustomerSummary[]; total: number }> => {
+  getCustomers: async (
+    params?: CustomerQueryParams
+  ): Promise<{ items: BackendCustomerSummary[]; total: number; page: number; limit: number; totalPages: number }> => {
     const response = await apiClient.get<ApiResponse<BackendCustomerSummary[]>>('/customers', {
       params,
     });
+    const meta = response.data.meta;
     return {
       items: response.data.data || [],
-      total: response.data.meta?.total || (response.data.data ? response.data.data.length : 0),
+      total: meta?.total ?? (response.data.data ? response.data.data.length : 0),
+      page: meta?.page ?? 1,
+      limit: meta?.limit ?? 10,
+      totalPages: (meta as { totalPages?: number })?.totalPages ?? 1,
     };
   },
 

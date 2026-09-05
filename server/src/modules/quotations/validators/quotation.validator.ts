@@ -47,6 +47,9 @@ export const updateQuotationSchema = z
     status: z.enum([
       QuotationStatuses.DRAFT,
       QuotationStatuses.SENT,
+      QuotationStatuses.NEGOTIATION,
+      QuotationStatuses.WON,
+      QuotationStatuses.LOST,
       QuotationStatuses.CANCELLED,
       QuotationStatuses.EXPIRED,
     ]).optional(),
@@ -129,3 +132,22 @@ export type UpdateQuotationInput = z.infer<typeof updateQuotationSchema>;
 export type AddQuotationItemInput = z.infer<typeof addQuotationItemSchema>;
 export type UpdateQuotationItemInput = z.infer<typeof updateQuotationItemSchema>;
 export type QuotationQueryInput = z.infer<typeof quotationQuerySchema>;
+
+export const negotiateQuotationSchema = z.object({
+  notes: z.string().max(2000, 'Notes must not exceed 2000 characters').optional().nullable(),
+  requestedDiscountPercent: z.number().min(0).max(100).optional(),
+});
+
+export const reviseQuotationSchema = z.object({
+  notes: z.string().max(2000, 'Notes must not exceed 2000 characters').optional().nullable(),
+});
+
+export const quotationOutcomeSchema = z.object({
+  notes: z.string().max(2000, 'Notes must not exceed 2000 characters').optional().nullable(),
+  reason: z.string().max(1000, 'Reason must not exceed 1000 characters').optional().nullable(),
+});
+
+export type NegotiateQuotationInput = z.infer<typeof negotiateQuotationSchema>;
+export type ReviseQuotationInput = z.infer<typeof reviseQuotationSchema>;
+export type QuotationOutcomeInput = z.infer<typeof quotationOutcomeSchema>;
+

@@ -18,6 +18,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { CustomerSearchCombobox } from '@/features/customers/components/CustomerSearchCombobox';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useProducts, usePriceLists } from '@/features/products/hooks/useProducts';
 import { useCreateQuotationMutation } from '../hooks/useQuotationsQuery';
 import { BackendProductSummary } from '../types/quotationApi.types';
@@ -81,29 +82,21 @@ export const QuoteBuilderPage: React.FC = () => {
     }
   }, [products, lineItems.length]);
 
-  // 4. Product Modal & Filtering
+  // 4. Live Server-Side Product Search for Catalog Modal
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productSearch, setProductSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const debouncedProductSearch = useDebounce(productSearch, 300);
 
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    products.forEach((p) => {
-      if (p.category?.name) set.add(p.category.name);
-    });
-    return Array.from(set);
-  }, [products]);
+  const {
+    data: searchProductData,
+    isLoading: isSearchProductLoading,
+  } = useProducts({
+    search: debouncedProductSearch.trim() || undefined,
+    limit: 15,
+    isActive: true,
+  });
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const matchesSearch =
-        p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-        p.sku.toLowerCase().includes(productSearch.toLowerCase());
-      const matchesCat =
-        selectedCategory === 'all' || p.category?.name === selectedCategory;
-      return matchesSearch && matchesCat;
-    });
-  }, [products, productSearch, selectedCategory]);
+  const modalProducts = searchProductData?.items || [];
 
   // 5. Line Item Actions
   const handleQuantityChange = (index: number, newQty: number) => {
@@ -211,6 +204,16 @@ export const QuoteBuilderPage: React.FC = () => {
 
     if (lineItems.length === 0) {
       setSubmissionError('Please add at least one line item to the quotation.');
+      return;
+    }
+
+    const stockErrorItem = lineItems.find(
+      (item) => item.product.stock !== undefined && item.product.stock !== null && item.quantity > item.product.stock
+    );
+    if (stockErrorItem) {
+      setSubmissionError(
+        `Stock validation failed: Product "${stockErrorItem.product.name}" requested quantity (${stockErrorItem.quantity}) exceeds available inventory (${stockErrorItem.product.stock} in stock). Please adjust quantity.`
+      );
       return;
     }
 
@@ -393,6 +396,20 @@ export const QuoteBuilderPage: React.FC = () => {
               </div>
             </CardHeader>
             <CardContent className="p-0">
+              {lineItems.some(
+                (i) => i.product.stock !== undefined && i.product.stock !== null && i.quantity > i.product.stock
+              ) && (
+                <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 flex items-start gap-2.5">
+                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-semibold text-rose-900">Stock Availability Warning:</strong>
+                    <p className="mt-0.5 text-rose-700">
+                      One or more requested quantities exceed current available stock. Please review highlighted items before submitting.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {lineItems.length === 0 ? (
                 <div className="p-8 text-center text-gray-400">
                   <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
@@ -407,6 +424,7 @@ export const QuoteBuilderPage: React.FC = () => {
                     <thead>
                       <tr className="border-b border-gray-200 bg-[#fbfcfe] px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-[#8491aa]">
                         <th className="py-2.5 px-4 font-semibold">Product / SKU</th>
+                        <th className="py-2.5 font-semibold text-center">Available Stock</th>
                         <th className="py-2.5 font-semibold text-right">Unit Price</th>
                         <th className="py-2.5 font-semibold text-center w-28">Quantity</th>
                         <th className="py-2.5 font-semibold text-center w-24">Discount %</th>
@@ -415,11 +433,41 @@ export const QuoteBuilderPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {lineItems.map((item, idx) => (
-                        <tr key={`${item.product.id}-${idx}`} className="hover:bg-gray-50/50">
+                      {lineItems.map((item, idx) => {
+                        const isStockInvalid =
+                          item.product.stock !== undefined &&
+                          item.product.stock !== null &&
+                          item.quantity > item.product.stock;
+
+                        return (
+                        <tr
+                          key={`${item.product.id}-${idx}`}
+                          className={isStockInvalid ? 'bg-rose-50/50 hover:bg-rose-50/80' : 'hover:bg-gray-50/50'}
+                        >
                           <td className="py-3 px-4">
                             <p className="font-semibold text-[#17213a]">{item.product.name}</p>
                             <span className="text-[10px] text-gray-400">SKU: {item.product.sku}</span>
+                          </td>
+                          <td className="py-3 text-center">
+                            {item.product.stock === undefined || item.product.stock === null ? (
+                              <span className="text-gray-400 font-medium text-[11px]">N/A</span>
+                            ) : item.product.stock === 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                                Out of Stock (0)
+                              </span>
+                            ) : isStockInvalid ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 border border-rose-300 px-2 py-0.5 text-[10px] font-bold text-rose-800">
+                                ⚠️ Only {item.product.stock} in stock
+                              </span>
+                            ) : item.product.stock <= 10 ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                                {item.product.stock} available
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                {item.product.stock} in stock
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 text-right font-medium text-[#17213a]">
                             {formatINR(item.unitPrice)}
@@ -433,7 +481,7 @@ export const QuoteBuilderPage: React.FC = () => {
                               >
                                 -
                               </button>
-                              <span className="w-8 text-center font-bold text-[#17213a]">
+                              <span className={`w-8 text-center font-bold ${isStockInvalid ? 'text-rose-700' : 'text-[#17213a]'}`}>
                                 {item.quantity}
                               </span>
                               <button
@@ -444,6 +492,11 @@ export const QuoteBuilderPage: React.FC = () => {
                                 +
                               </button>
                             </div>
+                            {isStockInvalid && (
+                              <p className="text-[9px] font-bold text-rose-600 mt-0.5">
+                                Max {item.product.stock}
+                              </p>
+                            )}
                           </td>
                           <td className="py-3 text-center">
                             <div className="flex items-center justify-center gap-1">
@@ -474,7 +527,8 @@ export const QuoteBuilderPage: React.FC = () => {
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                 </div>
@@ -568,73 +622,70 @@ export const QuoteBuilderPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Product Selection Modal */}
+      {/* Product Selection Modal - Live Server-Side Search */}
       <Modal
         isOpen={isProductModalOpen}
-        onClose={() => setIsProductModalOpen(false)}
+        onClose={() => {
+          setIsProductModalOpen(false);
+          setProductSearch('');
+        }}
         title="Select Product from Catalog"
-        description="Choose real items from your product master to add to this quotation."
+        description="Search real items from your product master to add to this quotation."
         maxWidth="lg"
       >
         <div className="space-y-4">
-          {/* Search & Categories */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex h-9 w-full max-w-xs items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 text-gray-500 focus-within:border-[#3568ed] focus-within:bg-white transition">
-              <Search className="h-3.5 w-3.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search products or SKU..."
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                className="w-full bg-transparent text-xs text-[#17213a] placeholder:text-gray-400 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center gap-1 overflow-x-auto pb-1">
-              <button
-                type="button"
-                onClick={() => setSelectedCategory('all')}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  selectedCategory === 'all'
-                    ? 'bg-[#3568ed] text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                All
-              </button>
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                    selectedCategory === cat
-                      ? 'bg-[#3568ed] text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
+          {/* Server-Side Search Input */}
+          <div className="flex h-10 w-full items-center gap-2.5 rounded-xl border border-gray-200 bg-gray-50 px-3 text-gray-500 focus-within:border-[#3568ed] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#3568ed]/15 transition">
+            <Search className="h-4 w-4 shrink-0 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search product / SKU..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="w-full bg-transparent text-xs text-[#17213a] placeholder:text-gray-400 focus:outline-none"
+              autoFocus
+            />
+            {isSearchProductLoading && (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#3568ed] shrink-0" />
+            )}
           </div>
 
           {/* Product Items List */}
           <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-            {filteredProducts.length === 0 ? (
+            {isSearchProductLoading && modalProducts.length === 0 ? (
               <div className="py-8 text-center text-xs text-gray-400">
-                No products match the selected criteria.
+                <RefreshCw className="mx-auto h-5 w-5 animate-spin text-[#3568ed] mb-2" />
+                Searching product catalog...
+              </div>
+            ) : modalProducts.length === 0 ? (
+              <div className="py-8 text-center text-xs text-gray-400">
+                {productSearch ? `No products match "${productSearch}".` : 'No active products available.'}
               </div>
             ) : (
-              filteredProducts.map((prod) => (
+              modalProducts.map((prod) => (
                 <div
                   key={prod.id}
                   className="flex items-center justify-between rounded-xl border border-gray-200 p-3 hover:border-blue-300 hover:bg-blue-50/20 transition"
                 >
                   <div>
-                    <h4 className="text-xs font-bold text-[#17213a]">{prod.name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-bold text-[#17213a]">{prod.name}</h4>
+                      {prod.stock === undefined || prod.stock === null ? null : prod.stock === 0 ? (
+                        <span className="rounded-full bg-rose-50 border border-rose-200 px-2 py-0.5 text-[9px] font-bold text-rose-700">
+                          Out of stock (0)
+                        </span>
+                      ) : prod.stock <= 10 ? (
+                        <span className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[9px] font-bold text-amber-700">
+                          Low Stock: {prod.stock} left
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                          Stock: {prod.stock}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      SKU: {prod.sku} • {prod.category?.name || 'General'}
+                      SKU: <span className="font-mono text-gray-600 font-semibold">{prod.sku}</span> • {prod.category?.name || 'General'}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -644,7 +695,10 @@ export const QuoteBuilderPage: React.FC = () => {
                     <Button
                       variant="primary"
                       size="sm"
-                      onClick={() => handleAddProduct(prod)}
+                      onClick={() => {
+                        handleAddProduct(prod);
+                        setProductSearch('');
+                      }}
                     >
                       Add
                     </Button>

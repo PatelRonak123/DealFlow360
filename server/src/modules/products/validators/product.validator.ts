@@ -49,17 +49,23 @@ export const updateProductSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export const productQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
-  search: z.string().trim().optional(),
-  categoryId: z.string().uuid().optional(),
-  productType: z.enum([ProductTypes.ONE_TIME, ProductTypes.RECURRING, ProductTypes.SERVICE]).optional(),
-  isActive: z
-    .enum(['true', 'false'])
-    .transform((val) => val === 'true')
-    .optional(),
-});
+export const productQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().optional().default(1),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional(),
+    search: z.string().trim().optional(),
+    categoryId: z.string().uuid().optional(),
+    productType: z.enum([ProductTypes.ONE_TIME, ProductTypes.RECURRING, ProductTypes.SERVICE]).optional(),
+    isActive: z
+      .enum(['true', 'false'])
+      .transform((val) => val === 'true')
+      .optional(),
+  })
+  .transform((data) => ({
+    ...data,
+    limit: data.pageSize || data.limit || 10,
+  }));
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;

@@ -57,6 +57,26 @@ export class QuotationsRepository {
     return `QT-${String(num).padStart(6, '0')}`;
   }
 
+  async generateNextRevisionNumber(parentQuotationNumber: string, client: Database = db): Promise<string> {
+    const baseNumber = parentQuotationNumber.replace(/-R\d+$/i, '');
+    const pattern = `${baseNumber}-R%`;
+    const existing = await client
+      .select({ quotationNumber: quotations.quotationNumber })
+      .from(quotations)
+      .where(ilike(quotations.quotationNumber, pattern));
+
+    let maxRev = 0;
+    const regex = new RegExp(`^${baseNumber}-R(\\d+)$`, 'i');
+    for (const row of existing) {
+      const match = row.quotationNumber.match(regex);
+      if (match) {
+        const revNum = parseInt(match[1], 10);
+        if (revNum > maxRev) maxRev = revNum;
+      }
+    }
+    return `${baseNumber}-R${maxRev + 1}`;
+  }
+
   async findAll(
     query: QuotationQueryInput,
     userOwnershipId?: string,
