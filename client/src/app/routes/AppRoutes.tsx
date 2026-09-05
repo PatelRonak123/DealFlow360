@@ -6,6 +6,8 @@ import { ProtectedRoute } from './ProtectedRoute';
 import { DashboardLayout } from '@/features/dashboard/layouts/DashboardLayout';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 
+import { customerPortalRoutes } from '@/features/customer-portal';
+
 export const AppRoutes: React.FC = () => {
   return (
     <Routes>
@@ -16,10 +18,11 @@ export const AppRoutes: React.FC = () => {
         <Route path="/register" element={<Navigate to="/signup" replace />} />
       </Route>
 
-      {/* Protected Application Routes */}
+      {/* Protected Application Routes inside existing DashboardLayout */}
       <Route element={<ProtectedRoute />}>
-        <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<DashboardPage />} />
+        <Route element={<DashboardLayout />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          {customerPortalRoutes}
         </Route>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>

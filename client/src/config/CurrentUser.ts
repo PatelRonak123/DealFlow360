@@ -1,10 +1,10 @@
 import { UserRole } from '@/types/Auth';
 
-// TEMP: hardcoded until login is wired up. Change this to preview other roles.
-export const CURRENT_ROLE: UserRole = 'sales_rep';
+// Default customer role preview for customer portal
+export const CURRENT_ROLE: UserRole = 'customer';
 
 export const CURRENT_USER = {
-  name: 'Riya Sharma',
+  name: 'Vikram Mehta (ABC Industries)',
   role: CURRENT_ROLE,
   avatarUrl: undefined as string | undefined,
 };

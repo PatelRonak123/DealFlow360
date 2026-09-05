@@ -1,7 +1,7 @@
-import { CURRENT_USER } from '@/config/CurrentUser';
 import { useAuth } from '@/features/auth';
 import { UserRole } from '@/types/Auth';
 import { ArrowDown, ArrowUp, Clock3, FileText, IndianRupee, Tag } from 'lucide-react';
+import { CustomerDashboardPage } from '@/features/customer-portal';
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -9,9 +9,19 @@ export function DashboardPage() {
   const role: UserRole =
     rawRole === 'sales_representative' || rawRole === 'sales_rep'
       ? 'sales_rep'
-      : (rawRole as UserRole) || CURRENT_USER.role;
+      : rawRole === 'sales_manager'
+      ? 'sales_manager'
+      : rawRole === 'finance_ops' || rawRole === 'finance'
+      ? 'finance_ops'
+      : rawRole === 'admin'
+      ? 'admin'
+      : (rawRole as UserRole) || 'customer';
 
-  const name = user?.name || CURRENT_USER.name;
+  const name = user?.name || 'User';
+
+  if (role === 'customer') {
+    return <CustomerDashboardPage />;
+  }
 
   return <RoleDashboard role={role} name={name} />;
 }

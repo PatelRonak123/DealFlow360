@@ -1,10 +1,24 @@
 import { NavLink } from 'react-router-dom';
 import { BarChart3 } from 'lucide-react';
 import { getNavForRole, NavItem } from '@/config/Navigation';
-import { CURRENT_USER } from '@/config/CurrentUser';
+import { useAuth } from '@/features/auth';
+import { UserRole } from '@/types/Auth';
 
 export function Sidebar() {
-  const sections = getNavForRole(CURRENT_USER.role);
+  const { user } = useAuth();
+  const rawRole = user?.roles?.[0]?.toLowerCase();
+  const role: UserRole =
+    rawRole === 'sales_representative' || rawRole === 'sales_rep'
+      ? 'sales_rep'
+      : rawRole === 'sales_manager'
+      ? 'sales_manager'
+      : rawRole === 'finance_ops' || rawRole === 'finance'
+      ? 'finance_ops'
+      : rawRole === 'admin'
+      ? 'admin'
+      : (rawRole as UserRole) || 'customer';
+
+  const sections = getNavForRole(role);
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-[#e7ebf7] bg-white px-4 py-5">
