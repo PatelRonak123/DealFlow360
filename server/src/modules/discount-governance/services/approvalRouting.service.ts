@@ -22,6 +22,7 @@ import {
 } from './discountEvaluation.service.js';
 import { DiscountGovernanceRepository } from '../repositories/discountGovernance.repository.js';
 import { quotationsRepository } from '../../quotations/repositories/quotations.repository.js';
+import { notificationsService } from '../../notifications/services/notifications.service.js';
 
 export interface QuotationSubmissionResult {
   quotationId: string;
@@ -212,6 +213,26 @@ export class ApprovalRoutingService {
       };
     });
 
+    if (result.approvalRequired) {
+      notificationsService.emitNotification({
+        title: `Approval Required: ${result.quotationNumber}`,
+        message: `Quotation ${result.quotationNumber} requires discount governance review (${result.approvalRoute}).`,
+        type: 'APPROVAL',
+        status: 'PENDING',
+        targetRoles: [Roles.SALES_MANAGER, Roles.ADMIN],
+        linkUrl: '/approvals',
+      });
+    }
+
+    notificationsService.emitNotification({
+      title: `Quotation ${result.quotationNumber} Submitted`,
+      message: `Quotation ${result.quotationNumber} has been submitted for governance review.`,
+      type: 'QUOTATION',
+      status: 'PENDING',
+      targetUserId: userId,
+      linkUrl: `/quotations/${result.quotationId}`,
+    });
+
     quotationsRepository.invalidateCache();
     return result;
   }
@@ -321,6 +342,37 @@ export class ApprovalRoutingService {
       };
     });
 
+    if (result.quotationStatus === QuotationStatuses.APPROVED) {
+      // Fully approved
+      notificationsService.emitNotification({
+        title: `Quotation ${quotation.quotationNumber} Approved`,
+        message: `Quotation has been approved by Sales Governance. Ready for customer acceptance.`,
+        type: 'APPROVAL',
+        status: 'APPROVED',
+        targetCustomerId: quotation.customerId,
+        targetRoles: [Roles.CUSTOMER, Roles.SALES_REP, Roles.ADMIN],
+        linkUrl: `/customer/quotations/${quotation.id}`,
+      });
+    } else if (result.quotationStatus === QuotationStatuses.PENDING_FINANCE_APPROVAL) {
+      // Escalated to Finance
+      notificationsService.emitNotification({
+        title: `Finance Review: ${quotation.quotationNumber}`,
+        message: `Manager approved. Finance tier-2 margin & profitability review required.`,
+        type: 'APPROVAL',
+        status: 'PENDING',
+        targetRoles: [Roles.FINANCE, Roles.ADMIN],
+        linkUrl: '/approvals',
+      });
+      notificationsService.emitNotification({
+        title: `Manager Approved: ${quotation.quotationNumber}`,
+        message: `Quotation ${quotation.quotationNumber} approved by Sales Manager and routed to Finance.`,
+        type: 'APPROVAL',
+        status: 'INFO',
+        targetUserId: quotation.createdBy,
+        linkUrl: `/quotations/${quotation.id}`,
+      });
+    }
+
     quotationsRepository.invalidateCache();
     return result;
   }
@@ -403,6 +455,16 @@ export class ApprovalRoutingService {
         approval: updatedApproval,
         quotationStatus: QuotationStatuses.REJECTED,
       };
+    });
+
+    notificationsService.emitNotification({
+      title: `Quotation ${quotation.quotationNumber} Rejected`,
+      message: `Quotation was rejected during governance review: ${comments || 'Discount exceeded governance limits.'}`,
+      type: 'REJECTION',
+      status: 'REJECTED',
+      targetCustomerId: quotation.customerId,
+      targetRoles: [Roles.CUSTOMER, Roles.SALES_REP, Roles.ADMIN],
+      linkUrl: `/customer/quotations/${quotation.id}`,
     });
 
     quotationsRepository.invalidateCache();

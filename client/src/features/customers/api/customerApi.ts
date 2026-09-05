@@ -25,4 +25,13 @@ export const customerApi = {
     const response = await apiClient.get<ApiResponse<BackendCustomerSummary>>(`/customers/${id}`);
     return response.data.data!;
   },
+
+  updateCustomerStatus: async (id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<BackendCustomerSummary> => {
+    const response = await apiClient.patch<ApiResponse<BackendCustomerSummary>>(`/customers/${id}/status`, { status });
+    return response.data.data!;
+  },
+
+  deleteCustomer: async (id: string): Promise<void> => {
+    await apiClient.delete(`/customers/${id}`);
+  },
 };

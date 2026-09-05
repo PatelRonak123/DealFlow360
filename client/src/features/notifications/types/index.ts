@@ -24,7 +24,3 @@ export interface AppNotification {
   targetCustomerId?: string;
   metadata?: Record<string, unknown>;
 }
-
-export interface NotificationsModuleState {
-  initialized: boolean;
-}
