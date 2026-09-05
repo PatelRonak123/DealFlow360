@@ -99,7 +99,7 @@ export class CustomersService {
   async deleteCustomer(id: string): Promise<void> {
     await this.getCustomerById(id);
 
-    // Soft delete / deletion
+    // Soft delete: Security flow changes status from ACTIVE to INACTIVE without deleting data
     const deleted = await this.repository.delete(id);
     if (!deleted) {
       throw new NotFoundError(`Customer with ID '${id}' not found`);
