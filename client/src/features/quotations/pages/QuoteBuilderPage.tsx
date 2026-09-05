@@ -29,6 +29,7 @@ import { getRecommendationsForQuote } from '@/features/upsell-cross-sell/utils/r
 import { quotationStore } from '../store/quotationStore';
 import { useDeals } from '@/features/deals/store/dealStore';
 import { formatINR, formatPercent } from '@/utils/formatters';
+import { apiClient, getAccessToken } from '@/api/apiClient';
 
 export const QuoteBuilderPage: React.FC = () => {
   const navigate = useNavigate();
@@ -172,6 +173,59 @@ export const QuoteBuilderPage: React.FC = () => {
 
     if (action === 'submit') {
       quotationStore.submitForApproval(quoteId);
+    }
+
+    // Persist to backend PostgreSQL database when authenticated
+    const token = getAccessToken();
+    if (token) {
+      (async () => {
+        try {
+          const custRes = await apiClient.get('/customers');
+          const serverCustomers = custRes.data?.data || [];
+          const plRes = await apiClient.get('/price-lists');
+          const serverPriceLists = plRes.data?.data || [];
+          const prodRes = await apiClient.get('/products');
+          const serverProducts = prodRes.data?.data || [];
+
+          if (serverCustomers.length > 0 && serverPriceLists.length > 0) {
+            const matchedCust =
+              serverCustomers.find((c: any) =>
+                c.companyName.toLowerCase().includes(selectedCustomer.name.toLowerCase())
+              ) || serverCustomers[0];
+            const defaultPl = serverPriceLists[0];
+
+            const createRes = await apiClient.post('/quotations', {
+              customerId: matchedCust.id,
+              priceListId: defaultPl.id,
+              issueDate: new Date().toISOString().split('T')[0],
+              expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              notes: `Quotation for ${selectedCustomer.name} (${financialsAndGovernance.averageDiscountPercent.toFixed(1)}% discount)`,
+            });
+
+            const backendQuoteId = createRes.data?.data?.id;
+            if (backendQuoteId && serverProducts.length > 0) {
+              for (const item of lineItems) {
+                const matchedProd =
+                  serverProducts.find((p: any) => p.name.toLowerCase() === item.name.toLowerCase()) ||
+                  serverProducts[0];
+                await apiClient.post(`/quotations/${backendQuoteId}/items`, {
+                  productId: matchedProd.id,
+                  quantity: item.quantity,
+                  discountPercent: item.discountPercent.toFixed(2),
+                });
+              }
+
+              if (action === 'submit') {
+                await apiClient.post(`/quotations/${backendQuoteId}/submit`, {
+                  notes: `Quotation submitted with ${financialsAndGovernance.averageDiscountPercent.toFixed(1)}% discount for manager review`,
+                });
+              }
+            }
+          }
+        } catch (backendErr) {
+          console.warn('Backend quote submission synchronization notice:', backendErr);
+        }
+      })();
     }
 
     navigate(`/quotations/${quoteId}`);

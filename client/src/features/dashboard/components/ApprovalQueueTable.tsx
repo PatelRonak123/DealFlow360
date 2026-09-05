@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { Check, CheckCircle2, X } from 'lucide-react';
+import { Check, CheckCircle2, X, Clock, Loader2 } from 'lucide-react';
 import { PendingApproval } from '../types';
 
 interface ApprovalQueueTableProps {
   approvals: PendingApproval[];
+  isLoading?: boolean;
   isProcessing: boolean;
-  onApprove: (id: string) => void;
+  onApproveClick: (approval: PendingApproval) => void;
   onRejectClick: (approval: PendingApproval) => void;
 }
 
 export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
   approvals,
+  isLoading = false,
   isProcessing,
-  onApprove,
+  onApproveClick,
   onRejectClick,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'high_discount' | 'urgent'>('all');
@@ -47,9 +49,9 @@ export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
           <div className="flex rounded-xl border border-[#e7ebf7] bg-[#f7f9fd] p-1 text-xs font-semibold">
             <button
               onClick={() => setActiveTab('all')}
-              className={`rounded-lg px-3 py-1.5 transition ${
+              className={`rounded-lg px-3 py-1.5 transition cursor-pointer ${
                 activeTab === 'all'
-                  ? 'bg-white text-[#3568ed] shadow-sm'
+                  ? 'bg-white text-[#3568ed] shadow-xs'
                   : 'text-[#59657d] hover:text-[#17213a]'
               }`}
             >
@@ -57,9 +59,9 @@ export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('high_discount')}
-              className={`rounded-lg px-3 py-1.5 transition ${
+              className={`rounded-lg px-3 py-1.5 transition cursor-pointer ${
                 activeTab === 'high_discount'
-                  ? 'bg-white text-[#3568ed] shadow-sm'
+                  ? 'bg-white text-[#3568ed] shadow-xs'
                   : 'text-[#59657d] hover:text-[#17213a]'
               }`}
             >
@@ -67,9 +69,9 @@ export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('urgent')}
-              className={`rounded-lg px-3 py-1.5 transition ${
+              className={`rounded-lg px-3 py-1.5 transition cursor-pointer ${
                 activeTab === 'urgent'
-                  ? 'bg-white text-[#3568ed] shadow-sm'
+                  ? 'bg-white text-[#3568ed] shadow-xs'
                   : 'text-[#59657d] hover:text-[#17213a]'
               }`}
             >
@@ -81,11 +83,16 @@ export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
 
       {/* Approvals Table */}
       <div className="mt-6 overflow-x-auto">
-        {filteredApprovals.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Loader2 size={32} className="animate-spin text-[#3568ed]" />
+            <p className="mt-3 text-xs font-medium text-[#8491aa]">Loading pending approvals from database...</p>
+          </div>
+        ) : filteredApprovals.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-12 text-center">
             <CheckCircle2 size={40} className="text-emerald-500" />
             <p className="mt-3 text-sm font-bold text-[#17213a]">Approval Queue Clear</p>
-            <p className="text-xs text-[#8491aa]">All submitted discounts have been reviewed.</p>
+            <p className="text-xs text-[#8491aa]">All submitted quotations and discount overrides have been evaluated.</p>
           </div>
         ) : (
           <table className="w-full text-left">
@@ -93,11 +100,11 @@ export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
               <tr className="border-b border-[#eef1f8] text-[11px] font-bold uppercase tracking-wider text-[#8491aa]">
                 <th className="pb-3 pl-2">Quotation</th>
                 <th className="pb-3">Customer</th>
-                <th className="pb-3">Submitted By</th>
+                <th className="pb-3">Sales Representative</th>
                 <th className="pb-3">Deal Value</th>
                 <th className="pb-3">Requested Discount</th>
-                <th className="pb-3">Justification</th>
-                <th className="pb-3 pr-2 text-right">Manager Action</th>
+                <th className="pb-3">Status</th>
+                <th className="pb-3 pr-2 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#f1f4fa] text-xs">
@@ -107,7 +114,9 @@ export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
                     {app.quotationNumber}
                     <span className="block text-[10px] font-normal text-[#8491aa]">{app.submittedAt}</span>
                   </td>
-                  <td className="py-4 font-semibold text-[#17213a]">{app.customerName}</td>
+                  <td className="py-4">
+                    <span className="font-semibold text-[#17213a]">{app.customerName}</span>
+                  </td>
                   <td className="py-4">
                     <div className="font-medium text-[#17213a]">{app.repName}</div>
                     <div className="text-[10px] text-[#8491aa]">{app.repEmail}</div>
@@ -119,15 +128,19 @@ export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
                       <span className="text-[10px] font-normal text-amber-600">(Limit: {app.maxRepLimit}%)</span>
                     </div>
                   </td>
-                  <td className="max-w-xs py-4 text-[#59657d] truncate" title={app.reason}>
-                    {app.reason}
+                  <td className="py-4">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200">
+                      <Clock size={11} />
+                      Pending Approval
+                    </span>
                   </td>
                   <td className="py-4 pr-2 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => onApprove(app.id)}
+                        onClick={() => onApproveClick(app)}
                         disabled={isProcessing}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+                        title="Review and approve discount"
                       >
                         <Check size={13} />
                         Approve
@@ -135,7 +148,8 @@ export const ApprovalQueueTable: React.FC<ApprovalQueueTableProps> = ({
                       <button
                         onClick={() => onRejectClick(app)}
                         disabled={isProcessing}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-50 cursor-pointer"
+                        title="Reject discount request"
                       >
                         <X size={13} />
                         Reject

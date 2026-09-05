@@ -1,73 +1,15 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ClipboardCheck, Download, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { apiClient } from '@/api/apiClient';
 import { PendingApproval, RecentTeamQuote, TeamRep } from '../types';
+import { useApprovals } from '../hooks/useApprovals';
 import { ManagerKpiCards } from './ManagerKpiCards';
 import { ApprovalQueueTable } from './ApprovalQueueTable';
+import { ApprovalConfirmModal } from './ApprovalConfirmModal';
 import { ApprovalRejectModal } from './ApprovalRejectModal';
 import { RepLeaderboard } from './RepLeaderboard';
 import { PipelineGovernance } from './PipelineGovernance';
 import { TeamRecentQuotes } from './TeamRecentQuotes';
-
-const initialApprovals: PendingApproval[] = [
-  {
-    id: 'app-1',
-    quotationNumber: 'Q-1048',
-    customerName: 'Acme Corp Global',
-    repName: 'Riya Sharma',
-    repEmail: 'riya.s@dealflow360.com',
-    amount: '₹ 5,40,000',
-    amountRaw: 540000,
-    requestedDiscount: 18.5,
-    maxRepLimit: 10.0,
-    reason: 'Multi-year commitment discount requested for 36-month contract.',
-    submittedAt: '2 hours ago',
-    status: 'pending',
-  },
-  {
-    id: 'app-2',
-    quotationNumber: 'Q-1045',
-    customerName: 'Tata Telematics Pvt Ltd',
-    repName: 'Rahul Verma',
-    repEmail: 'rahul.v@dealflow360.com',
-    amount: '₹ 8,90,000',
-    amountRaw: 890000,
-    requestedDiscount: 22.0,
-    maxRepLimit: 10.0,
-    reason: 'Competitive bid against Oracle CPQ; required to win enterprise account.',
-    submittedAt: '4 hours ago',
-    status: 'pending',
-  },
-  {
-    id: 'app-3',
-    quotationNumber: 'Q-1042',
-    customerName: 'Zenith Logistics',
-    repName: 'Sarah Jenkins',
-    repEmail: 'sarah.j@dealflow360.com',
-    amount: '₹ 3,20,000',
-    amountRaw: 320000,
-    requestedDiscount: 15.0,
-    maxRepLimit: 10.0,
-    reason: 'Bulk quantity tier order (500+ seat licenses).',
-    submittedAt: 'Yesterday',
-    status: 'pending',
-  },
-  {
-    id: 'app-4',
-    quotationNumber: 'Q-1039',
-    customerName: 'Infospectra Tech',
-    repName: 'Vikram Singh',
-    repEmail: 'vikram.s@dealflow360.com',
-    amount: '₹ 12,50,000',
-    amountRaw: 1250000,
-    requestedDiscount: 16.5,
-    maxRepLimit: 10.0,
-    reason: 'Strategic customer expansion across APAC business units.',
-    submittedAt: 'Yesterday',
-    status: 'pending',
-  },
-];
 
 const teamReps: TeamRep[] = [
   {
@@ -128,55 +70,39 @@ const teamRecentQuotes: RecentTeamQuote[] = [
   { id: 'Q-1045', customer: 'Tata Telematics Pvt Ltd', rep: 'Rahul Verma', amount: '₹ 8,90,000', discount: '22%', status: 'Pending Approval', tone: 'amber' },
 ];
 
-export function SalesManagerDashboard({ userName = 'Rajesh Malhotra' }: { userName?: string }) {
-  const [approvals, setApprovals] = useState<PendingApproval[]>(initialApprovals);
-  const [selectedApproval, setSelectedApproval] = useState<PendingApproval | null>(null);
-  const [comment, setComment] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+export function SalesManagerDashboard({ userName = 'Sales Manager' }: { userName?: string }) {
+  const {
+    approvals,
+    isLoading,
+    isProcessing,
+    approve,
+    reject,
+  } = useApprovals();
+
+  const [selectedApprove, setSelectedApprove] = useState<PendingApproval | null>(null);
+  const [selectedReject, setSelectedReject] = useState<PendingApproval | null>(null);
+  const [approveComment, setApproveComment] = useState('');
+  const [rejectComment, setRejectComment] = useState('');
 
   const pendingCount = approvals.filter((a) => a.status === 'pending').length;
 
-  const handleApprove = async (id: string) => {
-    setIsProcessing(true);
+  const handleApproveConfirm = async (id: string, notes?: string) => {
     try {
-      try {
-        await apiClient.post(`/approvals/${id}/approve`, {
-          comments: 'Approved by Sales Manager',
-        });
-      } catch {
-        // Fallback for demo
-      }
-
-      setApprovals((prev) =>
-        prev.map((app) => (app.id === id ? { ...app, status: 'approved' } : app))
-      );
-
-      toast.success(`Quotation ${id} discount approved! Rep notified.`);
-    } finally {
-      setIsProcessing(false);
+      await approve(id, notes);
+      setSelectedApprove(null);
+      setApproveComment('');
+    } catch {
+      // Error notifications handled by useApprovals hook
     }
   };
 
-  const handleRejectConfirm = async (id: string, reasonComment: string) => {
-    setIsProcessing(true);
+  const handleRejectConfirm = async (id: string, reason: string) => {
     try {
-      try {
-        await apiClient.post(`/approvals/${id}/reject`, {
-          comments: reasonComment || 'Discount rejected by Sales Manager',
-        });
-      } catch {
-        // Fallback for demo
-      }
-
-      setApprovals((prev) =>
-        prev.map((app) => (app.id === id ? { ...app, status: 'rejected' } : app))
-      );
-
-      toast.error(`Quotation ${id} discount rejected. Rep notified.`);
-      setSelectedApproval(null);
-      setComment('');
-    } finally {
-      setIsProcessing(false);
+      await reject(id, reason);
+      setSelectedReject(null);
+      setRejectComment('');
+    } catch {
+      // Error notifications handled by useApprovals hook
     }
   };
 
@@ -202,7 +128,7 @@ export function SalesManagerDashboard({ userName = 'Rajesh Malhotra' }: { userNa
           <button
             type="button"
             onClick={() => toast.success('Team quota and pipeline report exported!')}
-            className="inline-flex items-center gap-2 rounded-xl border border-[#e7ebf7] bg-white px-4 py-2.5 text-xs font-semibold text-[#3568ed] shadow-sm transition hover:bg-[#f0f4ff]"
+            className="inline-flex items-center gap-2 rounded-xl border border-[#e7ebf7] bg-white px-4 py-2.5 text-xs font-semibold text-[#3568ed] shadow-xs transition hover:bg-[#f0f4ff] cursor-pointer"
           >
             <Download size={14} />
             Export Team Report
@@ -223,9 +149,16 @@ export function SalesManagerDashboard({ userName = 'Rajesh Malhotra' }: { userNa
       {/* Actionable Approvals Queue */}
       <ApprovalQueueTable
         approvals={approvals}
+        isLoading={isLoading}
         isProcessing={isProcessing}
-        onApprove={handleApprove}
-        onRejectClick={(app) => setSelectedApproval(app)}
+        onApproveClick={(app) => {
+          setSelectedApprove(app);
+          setApproveComment('');
+        }}
+        onRejectClick={(app) => {
+          setSelectedReject(app);
+          setRejectComment('');
+        }}
       />
 
       {/* 2 Column: Rep Leaderboard & Pipeline Governance */}
@@ -237,13 +170,23 @@ export function SalesManagerDashboard({ userName = 'Rajesh Malhotra' }: { userNa
       {/* Cross-Team Recent Quotes */}
       <TeamRecentQuotes quotes={teamRecentQuotes} />
 
+      {/* Approve Confirmation Modal */}
+      <ApprovalConfirmModal
+        approval={selectedApprove}
+        comment={approveComment}
+        isProcessing={isProcessing}
+        onCommentChange={setApproveComment}
+        onClose={() => setSelectedApprove(null)}
+        onConfirm={handleApproveConfirm}
+      />
+
       {/* Rejection Modal */}
       <ApprovalRejectModal
-        approval={selectedApproval}
-        comment={comment}
+        approval={selectedReject}
+        comment={rejectComment}
         isProcessing={isProcessing}
-        onCommentChange={setComment}
-        onClose={() => setSelectedApproval(null)}
+        onCommentChange={setRejectComment}
+        onClose={() => setSelectedReject(null)}
         onConfirm={handleRejectConfirm}
       />
     </div>

@@ -17,7 +17,11 @@ export interface PendingApprovalListItem extends QuotationApproval {
   quotation?: {
     id: string;
     quotationNumber: string;
+    subtotal: string;
+    discountAmount: string;
     totalAmount: string;
+    discountPercent: string;
+    status: string;
     currency: string;
     customerId: string;
     createdById: string;
@@ -190,31 +194,43 @@ export class DiscountGovernanceRepository {
       .limit(filters.limit)
       .offset(offset);
 
-    const items: PendingApprovalListItem[] = rows.map((row) => ({
-      ...row.approval,
-      quotation: {
-        id: row.quotation.id,
-        quotationNumber: row.quotation.quotationNumber,
-        totalAmount: row.quotation.totalAmount,
-        currency: row.quotation.currency,
-        customerId: row.quotation.customerId,
-        createdById: row.quotation.createdBy,
-        customer: row.customer
-          ? {
-              id: row.customer.id,
-              companyName: row.customer.companyName,
-              email: row.customer.email,
-            }
-          : undefined,
-        createdBy: row.createdBy
-          ? {
-              id: row.createdBy.id,
-              name: row.createdBy.name,
-              email: row.createdBy.email,
-            }
-          : undefined,
-      },
-    }));
+    const items: PendingApprovalListItem[] = rows.map((row) => {
+      const subtotalNum = Number(row.quotation.subtotal) || 0;
+      const discountAmountNum = Number(row.quotation.discountAmount) || 0;
+      const discountPercent = subtotalNum > 0
+        ? ((discountAmountNum / subtotalNum) * 100).toFixed(1)
+        : '0.0';
+
+      return {
+        ...row.approval,
+        quotation: {
+          id: row.quotation.id,
+          quotationNumber: row.quotation.quotationNumber,
+          subtotal: row.quotation.subtotal,
+          discountAmount: row.quotation.discountAmount,
+          totalAmount: row.quotation.totalAmount,
+          discountPercent,
+          status: row.quotation.status,
+          currency: row.quotation.currency,
+          customerId: row.quotation.customerId,
+          createdById: row.quotation.createdBy,
+          customer: row.customer
+            ? {
+                id: row.customer.id,
+                companyName: row.customer.companyName,
+                email: row.customer.email,
+              }
+            : undefined,
+          createdBy: row.createdBy
+            ? {
+                id: row.createdBy.id,
+                name: row.createdBy.name,
+                email: row.createdBy.email,
+              }
+            : undefined,
+        },
+      };
+    });
 
     return { items, total };
   }
