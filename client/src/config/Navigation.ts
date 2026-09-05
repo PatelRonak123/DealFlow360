@@ -13,7 +13,6 @@ import {
   BarChart2,
   ShieldCheck,
   CreditCard,
-  User,
   LucideIcon,
   PlusCircle,
   Truck,
@@ -42,7 +41,7 @@ export const navigationConfig: NavSection[] = [
       { label: 'Sales Dashboard', to: '/sales/dashboard', icon: LayoutGrid, roles: [ROLES.SALES_REP] },
       { label: 'Manager Dashboard', to: '/manager/dashboard', icon: LayoutGrid, roles: [ROLES.SALES_MANAGER] },
       { label: 'Finance Dashboard', to: '/finance/dashboard', icon: LayoutGrid, roles: [ROLES.FINANCE] },
-      { label: 'Customer Overview', to: '/customer/dashboard', icon: LayoutGrid, roles: [ROLES.CUSTOMER] },
+      { label: 'Dashboard', to: '/customer/dashboard', icon: LayoutGrid, roles: [ROLES.CUSTOMER] },
 
       // Sales Operations
       { label: 'Create Quote', to: '/quotations/new', icon: PlusCircle, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER] },
@@ -61,12 +60,10 @@ export const navigationConfig: NavSection[] = [
       { label: 'Revenue Analytics', to: '/reports', icon: BarChart2, roles: [ROLES.SALES_MANAGER, ROLES.FINANCE, ROLES.ADMIN] },
 
       // Customer Portal Links
-      { label: 'My Quotations', to: '/customer/quotations', icon: FileText, roles: [ROLES.CUSTOMER] },
-      { label: 'Orders & Tracking', to: '/customer/orders', icon: Truck, roles: [ROLES.CUSTOMER] },
+      { label: 'Quotations', to: '/customer/quotations', icon: FileText, roles: [ROLES.CUSTOMER] },
+      { label: 'Orders', to: '/customer/orders', icon: Truck, roles: [ROLES.CUSTOMER] },
       { label: 'Invoices', to: '/customer/invoices', icon: Receipt, roles: [ROLES.CUSTOMER] },
       { label: 'Payments', to: '/customer/payments', icon: CreditCard, roles: [ROLES.CUSTOMER] },
-      { label: 'Subscriptions', to: '/customer/subscriptions', icon: Repeat, roles: [ROLES.CUSTOMER] },
-      { label: 'Profile', to: '/customer/profile', icon: User, roles: [ROLES.CUSTOMER] },
 
       // Admin Management
       { label: 'User Management', to: '/admin/users', icon: ShieldCheck, roles: [ROLES.ADMIN] },
