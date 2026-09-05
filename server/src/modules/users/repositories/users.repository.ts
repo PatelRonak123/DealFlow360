@@ -1,5 +1,5 @@
 import { db, Database } from '../../../database/db.js';
-import { users, userRoles, User, NewUser } from '../../../database/schema/index.js';
+import { users, userRoles, customers, User, NewUser } from '../../../database/schema/index.js';
 import { eq } from 'drizzle-orm';
 import { AuthUserContext } from '../../rbac/types/index.js';
 
@@ -73,12 +73,30 @@ export class UsersRepository {
       }
     }
 
+    // Check if user is associated with a customer entity
+    let customerId: string | undefined;
+    let customerName: string | undefined;
+
+    try {
+      const customerRecord = await db.query.customers.findFirst({
+        where: eq(customers.email, user.email.toLowerCase()),
+      });
+      if (customerRecord) {
+        customerId = customerRecord.id;
+        customerName = customerRecord.companyName || customerRecord.contactName || undefined;
+      }
+    } catch {
+      // Ignore customer lookup failure if schema or data differs
+    }
+
     return {
       userId: user.id,
       email: user.email,
       name: user.name,
       roles: Array.from(roleNamesSet),
       permissions: Array.from(permissionNamesSet),
+      customerId,
+      customerName,
     };
   }
 }

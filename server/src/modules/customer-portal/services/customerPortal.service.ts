@@ -18,16 +18,19 @@ import { NotFoundError, BadRequestError } from '../../../common/errors/index.js'
 export class CustomerPortalService {
   constructor(private readonly repository: CustomerPortalRepository = customerPortalRepository) {}
 
-  async getDashboard(): Promise<CustomerDashboardMetrics> {
-    return this.repository.getDashboardMetrics();
+  async getDashboard(customerId?: string): Promise<CustomerDashboardMetrics> {
+    return this.repository.getDashboardMetrics(customerId);
   }
 
-  async listQuotations(query?: { search?: string; status?: string }): Promise<CustomerQuotationDetail[]> {
-    return this.repository.findQuotations(query);
+  async listQuotations(
+    query?: { search?: string; status?: string },
+    customerId?: string
+  ): Promise<CustomerQuotationDetail[]> {
+    return this.repository.findQuotations(query, customerId);
   }
 
-  async getQuotationById(id: string): Promise<CustomerQuotationDetail> {
-    const quotation = await this.repository.findQuotationById(id);
+  async getQuotationById(id: string, customerId?: string): Promise<CustomerQuotationDetail> {
+    const quotation = await this.repository.findQuotationById(id, customerId);
     if (!quotation) {
       throw new NotFoundError(`Quotation with ID '${id}' not found`);
     }
@@ -36,42 +39,44 @@ export class CustomerPortalService {
 
   async submitNegotiation(
     quotationId: string,
-    input: NegotiationSubmissionInput
+    input: NegotiationSubmissionInput,
+    customerId?: string
   ): Promise<CustomerQuotationDetail> {
     if (input.requestedDiscountPercent < 0 || input.requestedDiscountPercent > 100) {
       throw new BadRequestError('Requested discount must be between 0% and 100%');
     }
-    return this.repository.submitNegotiation(quotationId, input);
+    return this.repository.submitNegotiation(quotationId, input, customerId);
   }
 
   async confirmQuotation(
-    quotationId: string
+    quotationId: string,
+    customerId?: string
   ): Promise<{ quotation: CustomerQuotationDetail; order: CustomerOrder }> {
-    const quote = await this.getQuotationById(quotationId);
+    const quote = await this.getQuotationById(quotationId, customerId);
     if (quote.status === 'CONFIRMED') {
       throw new BadRequestError(`Quotation ${quote.quotationNumber} is already confirmed`);
     }
-    return this.repository.confirmQuotation(quotationId);
+    return this.repository.confirmQuotation(quotationId, customerId);
   }
 
-  async listOrders(): Promise<CustomerOrder[]> {
-    return this.repository.findOrders();
+  async listOrders(customerId?: string): Promise<CustomerOrder[]> {
+    return this.repository.findOrders(customerId);
   }
 
-  async getOrderById(id: string): Promise<CustomerOrder> {
-    const order = await this.repository.findOrderById(id);
+  async getOrderById(id: string, customerId?: string): Promise<CustomerOrder> {
+    const order = await this.repository.findOrderById(id, customerId);
     if (!order) {
       throw new NotFoundError(`Order with ID '${id}' not found`);
     }
     return order;
   }
 
-  async listInvoices(): Promise<CustomerInvoice[]> {
-    return this.repository.findInvoices();
+  async listInvoices(customerId?: string): Promise<CustomerInvoice[]> {
+    return this.repository.findInvoices(customerId);
   }
 
-  async getInvoiceById(id: string): Promise<CustomerInvoice> {
-    const invoice = await this.repository.findInvoiceById(id);
+  async getInvoiceById(id: string, customerId?: string): Promise<CustomerInvoice> {
+    const invoice = await this.repository.findInvoiceById(id, customerId);
     if (!invoice) {
       throw new NotFoundError(`Invoice with ID '${id}' not found`);
     }
@@ -80,29 +85,30 @@ export class CustomerPortalService {
 
   async payInvoice(
     invoiceId: string,
-    input: { amount: string; paymentMethod: 'CREDIT_CARD' | 'BANK_TRANSFER' | 'NET_BANKING' | 'UPI' }
+    input: { amount: string; paymentMethod: 'CREDIT_CARD' | 'BANK_TRANSFER' | 'NET_BANKING' | 'UPI' },
+    customerId?: string
   ): Promise<{ invoice: CustomerInvoice; payment: CustomerPayment }> {
-    return this.repository.payInvoice(invoiceId, input);
+    return this.repository.payInvoice(invoiceId, input, customerId);
   }
 
-  async listPayments(): Promise<CustomerPayment[]> {
-    return this.repository.findPayments();
+  async listPayments(customerId?: string): Promise<CustomerPayment[]> {
+    return this.repository.findPayments(customerId);
   }
 
-  async listSubscriptions(): Promise<CustomerSubscription[]> {
-    return this.repository.findSubscriptions();
+  async listSubscriptions(customerId?: string): Promise<CustomerSubscription[]> {
+    return this.repository.findSubscriptions(customerId);
   }
 
-  async getSubscriptionById(id: string): Promise<CustomerSubscription> {
-    const sub = await this.repository.findSubscriptionById(id);
+  async getSubscriptionById(id: string, customerId?: string): Promise<CustomerSubscription> {
+    const sub = await this.repository.findSubscriptionById(id, customerId);
     if (!sub) {
       throw new NotFoundError(`Subscription with ID '${id}' not found`);
     }
     return sub;
   }
 
-  async listNotifications(): Promise<CustomerNotification[]> {
-    return this.repository.findNotifications();
+  async listNotifications(customerId?: string): Promise<CustomerNotification[]> {
+    return this.repository.findNotifications(customerId);
   }
 
   async markNotificationRead(id: string): Promise<boolean> {
@@ -113,13 +119,14 @@ export class CustomerPortalService {
     return this.repository.markAllNotificationsAsRead();
   }
 
-  async getProfile(): Promise<CustomerProfile> {
-    return this.repository.getProfile();
+  async getProfile(customerId?: string): Promise<CustomerProfile> {
+    return this.repository.getProfile(customerId);
   }
 
-  async updateProfile(data: Partial<CustomerProfile>): Promise<CustomerProfile> {
-    return this.repository.updateProfile(data);
+  async updateProfile(data: Partial<CustomerProfile>, customerId?: string): Promise<CustomerProfile> {
+    return this.repository.updateProfile(data, customerId);
   }
 }
 
 export const customerPortalService = new CustomerPortalService();
+

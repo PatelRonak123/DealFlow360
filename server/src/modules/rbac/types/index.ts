@@ -7,4 +7,7 @@ export interface AuthUserContext {
   name: string;
   roles: string[];
   permissions: string[];
+  customerId?: string;
+  customerName?: string;
 }
+

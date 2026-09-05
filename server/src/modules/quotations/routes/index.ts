@@ -3,6 +3,7 @@ import { quotationsController } from '../controllers/quotations.controller.js';
 import { requireAuth, requirePermission } from '../../auth/middleware/auth.middleware.js';
 import { Permissions } from '../../rbac/constants/permissions.js';
 import { DiscountGovernanceController } from '../../discount-governance/controllers/discountGovernance.controller.js';
+import { quotationRecommendationsRouter } from '../../recommendations/routes/index.js';
 
 const governanceController = new DiscountGovernanceController();
 
@@ -66,6 +67,9 @@ quotationsRouter.get(
   requirePermission(Permissions.QUOTATION_READ),
   (req, res, next) => governanceController.getQuotationApprovals(req, res, next)
 );
+
+// Recommendations Sub-router (/api/v1/quotations/:quotationId/recommendations)
+quotationsRouter.use('/:quotationId/recommendations', quotationRecommendationsRouter);
 
 // Line items CRUD
 quotationsRouter.post(

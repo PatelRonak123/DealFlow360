@@ -2036,14 +2036,235 @@ Phase 6 implements automated discount evaluation against tier and category disco
 
 ---
 
-## 14. RBAC Roles & Permissions Matrix
+## 14. Upsell & Cross-Sell Recommendation Engine API
+
+Provides contextual cross-sell and upsell suggestions during quotation authoring, integrating directly with custom price lists and triggering commercial approval invalidations upon recommendation acceptance.
+
+### 14.1 List Recommendation Rules
+* **Endpoint**: `GET /api/v1/recommendation-rules`
+* **Access**: Protected (`recommendation_rule:read`)
+* **Query Parameters**:
+  * `page` (optional, default: `1`): Page number
+  * `limit` (optional, default: `20`): Page size
+  * `sourceProductId` (optional, UUID): Filter by source product
+  * `recommendedProductId` (optional, UUID): Filter by recommended product
+  * `recommendationType` (optional, `CROSS_SELL` | `UPSELL`): Filter by rule type
+  * `priority` (optional, `LOW` | `MEDIUM` | `HIGH`): Filter by priority
+  * `isActive` (optional, `true` | `false`): Filter by active status
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Recommendation rules retrieved successfully",
+  "data": [
+    {
+      "id": "aa11b5f0-629a-4c22-9909-08a8a4b08b01",
+      "sourceProductId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+      "recommendedProductId": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+      "recommendationType": "CROSS_SELL",
+      "priority": "HIGH",
+      "defaultQuantity": 1,
+      "description": "Complementary protective case",
+      "isActive": true,
+      "createdAt": "2026-09-05T09:00:00.000Z",
+      "updatedAt": "2026-09-05T09:00:00.000Z",
+      "sourceProduct": {
+        "id": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+        "name": "Standard Laptop 15",
+        "sku": "LAP-STD-01"
+      },
+      "recommendedProduct": {
+        "id": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+        "name": "Premium Laptop Bag",
+        "sku": "BAG-01",
+        "basePrice": "3000.00",
+        "currency": "INR",
+        "isActive": true
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "totalPages": 1
+  },
+  "timestamp": "2026-09-05T09:00:00.000Z"
+}
+```
+
+### 14.2 Create Recommendation Rule
+* **Endpoint**: `POST /api/v1/recommendation-rules`
+* **Access**: Protected (`recommendation_rule:create`)
+* **Request Body**:
+```json
+{
+  "sourceProductId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+  "recommendedProductId": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+  "recommendationType": "CROSS_SELL",
+  "priority": "HIGH",
+  "defaultQuantity": 1,
+  "description": "Complementary protective case",
+  "isActive": true
+}
+```
+* **Success Response (`201 Created`)**:
+```json
+{
+  "success": true,
+  "message": "Recommendation rule created successfully",
+  "data": {
+    "id": "aa11b5f0-629a-4c22-9909-08a8a4b08b01",
+    "sourceProductId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+    "recommendedProductId": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+    "recommendationType": "CROSS_SELL",
+    "priority": "HIGH",
+    "defaultQuantity": 1,
+    "description": "Complementary protective case",
+    "isActive": true,
+    "createdAt": "2026-09-05T09:00:00.000Z",
+    "updatedAt": "2026-09-05T09:00:00.000Z"
+  },
+  "timestamp": "2026-09-05T09:00:00.000Z"
+}
+```
+
+### 14.3 Get Recommendation Rule by ID
+* **Endpoint**: `GET /api/v1/recommendation-rules/:id`
+* **Access**: Protected (`recommendation_rule:read`)
+
+### 14.4 Update Recommendation Rule
+* **Endpoint**: `PATCH /api/v1/recommendation-rules/:id`
+* **Access**: Protected (`recommendation_rule:update`)
+
+### 14.5 Delete Recommendation Rule
+* **Endpoint**: `DELETE /api/v1/recommendation-rules/:id`
+* **Access**: Protected (`recommendation_rule:delete`)
+
+### 14.6 Get Quotation Recommendations
+* **Endpoint**: `GET /api/v1/quotations/:quotationId/recommendations`
+* **Access**: Protected (`recommendation:read`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation recommendations retrieved successfully",
+  "data": {
+    "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "quotationNumber": "QT-000001",
+    "priceListId": "44e1b5f0-629a-4c22-9909-08a8a4b08b22",
+    "currency": "INR",
+    "totalRecommendations": 1,
+    "recommendations": [
+      {
+        "id": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+        "ruleId": "aa11b5f0-629a-4c22-9909-08a8a4b08b01",
+        "recommendedProduct": {
+          "id": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+          "name": "Premium Laptop Bag",
+          "sku": "BAG-01",
+          "description": "Ergonomic water-resistant bag",
+          "productType": "ONE_TIME",
+          "categoryId": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+          "categoryName": "Accessories",
+          "basePrice": "3000.00",
+          "currency": "INR"
+        },
+        "recommendationType": "CROSS_SELL",
+        "priority": "HIGH",
+        "priorityWeight": 3,
+        "recommendedQuantity": 1,
+        "description": "Complementary protective case",
+        "financialImpact": {
+          "unitPrice": 3000.00,
+          "currency": "INR",
+          "recommendedQuantity": 1,
+          "additionalRevenue": 3000.00,
+          "priceSource": "PRICE_LIST",
+          "priceListId": "44e1b5f0-629a-4c22-9909-08a8a4b08b22",
+          "estimatedMarginImpact": null
+        },
+        "triggeredBy": [
+          {
+            "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+            "productName": "Standard Laptop 15",
+            "sku": "LAP-STD-01",
+            "recommendationType": "CROSS_SELL",
+            "ruleId": "aa11b5f0-629a-4c22-9909-08a8a4b08b01"
+          }
+        ]
+      }
+    ]
+  },
+  "timestamp": "2026-09-05T09:00:00.000Z"
+}
+```
+
+### 14.7 Accept Quotation Recommendation
+* **Endpoint**: `POST /api/v1/quotations/:quotationId/recommendations/:recommendationId/accept`
+* **Access**: Protected (`recommendation:accept`)
+* **Request Body** (optional):
+```json
+{
+  "quantity": 1,
+  "discountPercent": "0.00"
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Recommendation accepted: added 'Premium Laptop Bag' to quotation",
+  "data": {
+    "item": {
+      "id": "88e1b5f0-629a-4c22-9909-08a8a4b08b88",
+      "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "productId": "66e1b5f0-629a-4c22-9909-08a8a4b08b44",
+      "productNameSnapshot": "Premium Laptop Bag",
+      "skuSnapshot": "BAG-01",
+      "quantity": 1,
+      "unitPrice": "3000.00",
+      "discountPercent": "0.00",
+      "grossAmount": "3000.00",
+      "discountAmount": "0.00",
+      "netAmount": "3000.00"
+    },
+    "quotation": {
+      "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "quotationNumber": "QT-000001",
+      "status": "DRAFT",
+      "subtotalAmount": "63000.00",
+      "discountAmount": "0.00",
+      "totalAmount": "63000.00"
+    }
+  },
+  "timestamp": "2026-09-05T09:00:00.000Z"
+}
+```
+
+### 14.8 Dismiss Quotation Recommendation
+* **Endpoint**: `POST /api/v1/quotations/:quotationId/recommendations/:recommendationId/dismiss`
+* **Access**: Protected (`recommendation:dismiss`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Recommendation dismissed successfully for this quotation",
+  "data": null,
+  "timestamp": "2026-09-05T09:00:00.000Z"
+}
+```
+
+---
+
+## 15. RBAC Roles & Permissions Matrix
 
 ### Roles
 | Role | Code | Description |
 |---|---|---|
 | Administrator | `ADMIN` | Full administrative bypass and access across all modules |
-| Sales Representative | `SALES_REP` | Create/edit/submit quotations, view catalog, price lists, discount rules, inventory |
-| Sales Manager | `SALES_MANAGER` | Quote approvals, discount governance, manage catalog, price lists, discount rules |
+| Sales Representative | `SALES_REP` | Create/edit/submit quotations, view catalog, price lists, discount rules, recommendations |
+| Sales Manager | `SALES_MANAGER` | Quote approvals, discount governance, manage recommendation rules, price lists |
 | Finance & Operations | `FINANCE_OPERATIONS` | Billing, payment processing, finance discount approvals, price lists, discount overrides |
 | Customer | `CUSTOMER` | Customer portal viewing of quotes and invoices |
 
@@ -2075,6 +2296,14 @@ Phase 6 implements automated discount evaluation against tier and category disco
 | `approval:read` | View pending approval queue | `ADMIN`, `SALES_REP`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `approval:approve` | Approve pending discount approvals | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `approval:reject` | Reject pending discount approvals | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
+| `recommendation:read` | View quotation upsell / cross-sell suggestions | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
+| `recommendation:accept` | Accept and add recommendations to quotations | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
+| `recommendation:dismiss` | Dismiss recommendations for quotations | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
+| `recommendation:manage` | Configure recommendation rules | `ADMIN`, `SALES_MANAGER` |
+| `recommendation_rule:create` | Create recommendation rules | `ADMIN`, `SALES_MANAGER` |
+| `recommendation_rule:read` | Read recommendation rules | `ADMIN`, `SALES_MANAGER` |
+| `recommendation_rule:update` | Update recommendation rules | `ADMIN`, `SALES_MANAGER` |
+| `recommendation_rule:delete` | Delete recommendation rules | `ADMIN`, `SALES_MANAGER` |
 | `pricing:manage` | Configure price lists and rules | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `discount:approve` | Approve discount thresholds | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `discount:override` | Override executive discount ceilings | `ADMIN`, `FINANCE_OPERATIONS` |
