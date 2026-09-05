@@ -6,9 +6,15 @@ import { HttpStatus } from '../../../common/constants/httpStatus.js';
 export class CustomerPortalController {
   constructor(private readonly service: CustomerPortalService = customerPortalService) {}
 
-  async getDashboard(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  private getCustomerId(req: Request): string | undefined {
+    return req.user?.customerId || undefined;
+  }
+
+  async getDashboard(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await this.service.getDashboard();
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const data = await this.service.getDashboard(customerId, userEmail);
       sendSuccess(res, data, 'Customer dashboard metrics retrieved successfully');
     } catch (error) {
       next(error);
@@ -17,11 +23,17 @@ export class CustomerPortalController {
 
   async listQuotations(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
       const { search, status } = req.query;
-      const data = await this.service.listQuotations({
-        search: typeof search === 'string' ? search : undefined,
-        status: typeof status === 'string' ? status : undefined,
-      });
+      const data = await this.service.listQuotations(
+        {
+          search: typeof search === 'string' ? search : undefined,
+          status: typeof status === 'string' ? status : undefined,
+        },
+        customerId,
+        userEmail
+      );
       sendSuccess(res, data, 'Quotations retrieved successfully');
     } catch (error) {
       next(error);
@@ -30,8 +42,10 @@ export class CustomerPortalController {
 
   async getQuotationById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
       const { id } = req.params;
-      const data = await this.service.getQuotationById(id);
+      const data = await this.service.getQuotationById(id, customerId, userEmail);
       sendSuccess(res, data, 'Quotation details retrieved successfully');
     } catch (error) {
       next(error);
@@ -40,14 +54,23 @@ export class CustomerPortalController {
 
   async submitNegotiation(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const userName = req.user?.name;
       const { id } = req.params;
       const { requestedDiscountPercent, reason, changeRequests, message } = req.body;
-      const data = await this.service.submitNegotiation(id, {
-        requestedDiscountPercent: Number(requestedDiscountPercent),
-        reason: String(reason || ''),
-        changeRequests: Array.isArray(changeRequests) ? changeRequests : undefined,
-        message: message ? String(message) : undefined,
-      });
+      const data = await this.service.submitNegotiation(
+        id,
+        {
+          requestedDiscountPercent: Number(requestedDiscountPercent),
+          reason: String(reason || ''),
+          changeRequests: Array.isArray(changeRequests) ? changeRequests : undefined,
+          message: message ? String(message) : undefined,
+        },
+        customerId,
+        userEmail,
+        userName
+      );
       sendSuccess(res, data, 'Counter offer submitted successfully', HttpStatus.OK);
     } catch (error) {
       next(error);
@@ -56,17 +79,21 @@ export class CustomerPortalController {
 
   async confirmQuotation(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
       const { id } = req.params;
-      const data = await this.service.confirmQuotation(id);
+      const data = await this.service.confirmQuotation(id, customerId, userEmail);
       sendSuccess(res, data, 'Quotation confirmed and order generated successfully', HttpStatus.CREATED);
     } catch (error) {
       next(error);
     }
   }
 
-  async listOrders(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async listOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await this.service.listOrders();
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const data = await this.service.listOrders(customerId, userEmail);
       sendSuccess(res, data, 'Orders retrieved successfully');
     } catch (error) {
       next(error);
@@ -75,17 +102,21 @@ export class CustomerPortalController {
 
   async getOrderById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
       const { id } = req.params;
-      const data = await this.service.getOrderById(id);
+      const data = await this.service.getOrderById(id, customerId, userEmail);
       sendSuccess(res, data, 'Order details retrieved successfully');
     } catch (error) {
       next(error);
     }
   }
 
-  async listInvoices(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async listInvoices(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await this.service.listInvoices();
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const data = await this.service.listInvoices(customerId, userEmail);
       sendSuccess(res, data, 'Invoices retrieved successfully');
     } catch (error) {
       next(error);
@@ -94,8 +125,10 @@ export class CustomerPortalController {
 
   async getInvoiceById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
       const { id } = req.params;
-      const data = await this.service.getInvoiceById(id);
+      const data = await this.service.getInvoiceById(id, customerId, userEmail);
       sendSuccess(res, data, 'Invoice details retrieved successfully');
     } catch (error) {
       next(error);
@@ -104,30 +137,41 @@ export class CustomerPortalController {
 
   async payInvoice(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
       const { id } = req.params;
       const { amount, paymentMethod } = req.body;
-      const data = await this.service.payInvoice(id, {
-        amount: String(amount),
-        paymentMethod: paymentMethod || 'NET_BANKING',
-      });
+      const data = await this.service.payInvoice(
+        id,
+        {
+          amount: String(amount),
+          paymentMethod: paymentMethod || 'NET_BANKING',
+        },
+        customerId,
+        userEmail
+      );
       sendSuccess(res, data, 'Payment processed successfully', HttpStatus.CREATED);
     } catch (error) {
       next(error);
     }
   }
 
-  async listPayments(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async listPayments(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await this.service.listPayments();
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const data = await this.service.listPayments(customerId, userEmail);
       sendSuccess(res, data, 'Payments retrieved successfully');
     } catch (error) {
       next(error);
     }
   }
 
-  async listSubscriptions(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async listSubscriptions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await this.service.listSubscriptions();
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const data = await this.service.listSubscriptions(customerId, userEmail);
       sendSuccess(res, data, 'Subscriptions retrieved successfully');
     } catch (error) {
       next(error);
@@ -136,17 +180,21 @@ export class CustomerPortalController {
 
   async getSubscriptionById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
       const { id } = req.params;
-      const data = await this.service.getSubscriptionById(id);
+      const data = await this.service.getSubscriptionById(id, customerId, userEmail);
       sendSuccess(res, data, 'Subscription details retrieved successfully');
     } catch (error) {
       next(error);
     }
   }
 
-  async listNotifications(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async listNotifications(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await this.service.listNotifications();
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const data = await this.service.listNotifications(customerId, userEmail);
       sendSuccess(res, data, 'Notifications retrieved successfully');
     } catch (error) {
       next(error);
@@ -172,9 +220,12 @@ export class CustomerPortalController {
     }
   }
 
-  async getProfile(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await this.service.getProfile();
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const userName = req.user?.name;
+      const data = await this.service.getProfile(customerId, userEmail, userName);
       sendSuccess(res, data, 'Customer profile retrieved successfully');
     } catch (error) {
       next(error);
@@ -183,7 +234,18 @@ export class CustomerPortalController {
 
   async updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await this.service.updateProfile(req.body);
+      const customerId = this.getCustomerId(req);
+      const userEmail = req.user?.email;
+      const userName = req.user?.name;
+      const data = await this.service.updateProfile(
+        {
+          ...req.body,
+          email: req.body.email || userEmail,
+        },
+        customerId,
+        userEmail,
+        userName
+      );
       sendSuccess(res, data, 'Customer profile updated successfully');
     } catch (error) {
       next(error);

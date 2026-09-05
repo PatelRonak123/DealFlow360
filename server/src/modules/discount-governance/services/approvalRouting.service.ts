@@ -21,6 +21,7 @@ import {
   QuotationDiscountEvaluationResult,
 } from './discountEvaluation.service.js';
 import { DiscountGovernanceRepository } from '../repositories/discountGovernance.repository.js';
+import { quotationsRepository } from '../../quotations/repositories/quotations.repository.js';
 
 export interface QuotationSubmissionResult {
   quotationId: string;
@@ -79,14 +80,17 @@ export class ApprovalRoutingService {
       throw new ForbiddenError('You can only submit your own draft quotations');
     }
 
-    // 3. Status check - quotation can be submitted if in DRAFT or REJECTED
+    // 3. Status check - quotation can be submitted if in DRAFT or REJECTED or pending
     const submittableStatuses: string[] = [
       QuotationStatuses.DRAFT,
       QuotationStatuses.REJECTED,
+      QuotationStatuses.PENDING_APPROVAL,
+      QuotationStatuses.PENDING_MANAGER_APPROVAL,
+      QuotationStatuses.PENDING_FINANCE_APPROVAL,
     ];
     if (!submittableStatuses.includes(quotation.status)) {
       throw new BadRequestError(
-        `Quotation in '${quotation.status}' status cannot be submitted. Only DRAFT or REJECTED quotations may be submitted.`
+        `Quotation in '${quotation.status}' status cannot be submitted. Only DRAFT, REJECTED, or PENDING quotations may be submitted.`
       );
     }
 
@@ -138,7 +142,7 @@ export class ApprovalRoutingService {
         // Automatically approved
         targetStatus = QuotationStatuses.APPROVED;
       } else if (evaluation.approvalRoute === ApprovalRoutes.MANAGER) {
-        targetStatus = QuotationStatuses.PENDING_MANAGER_APPROVAL;
+        targetStatus = QuotationStatuses.PENDING_APPROVAL;
         const approvalsData: NewQuotationApproval[] = [
           {
             quotationId,
@@ -158,7 +162,7 @@ export class ApprovalRoutingService {
           }))
         );
       } else if (evaluation.approvalRoute === ApprovalRoutes.MANAGER_AND_FINANCE) {
-        targetStatus = QuotationStatuses.PENDING_MANAGER_APPROVAL;
+        targetStatus = QuotationStatuses.PENDING_APPROVAL;
         const approvalsData: NewQuotationApproval[] = [
           {
             quotationId,
@@ -208,6 +212,7 @@ export class ApprovalRoutingService {
       };
     });
 
+    quotationsRepository.invalidateCache();
     return result;
   }
 
@@ -217,7 +222,7 @@ export class ApprovalRoutingService {
   public async approveApproval(
     approvalId: string,
     userId: string,
-    userRole: string,
+    userRole: string | string[],
     comments?: string
   ) {
     const approval = await this.repository.getApprovalById(approvalId);
@@ -229,18 +234,34 @@ export class ApprovalRoutingService {
       throw new BadRequestError(`Approval is already in '${approval.status}' state`);
     }
 
-    // Role-based authorization
-    if (userRole === Roles.SALES_REP) {
+    // Verify associated quotation exists
+    const [quotation] = await this.db
+      .select()
+      .from(quotations)
+      .where(eq(quotations.id, approval.quotationId));
+
+    if (!quotation) {
+      throw new NotFoundError(`Associated quotation with ID '${approval.quotationId}' was not found`);
+    }
+
+    // Role-based authorization: support string or array of roles
+    const userRoleList = Array.isArray(userRole) ? userRole : [userRole];
+    const isOnlyRep = userRoleList.includes(Roles.SALES_REP) &&
+      !userRoleList.includes(Roles.ADMIN) &&
+      !userRoleList.includes(Roles.SALES_MANAGER) &&
+      !userRoleList.includes(Roles.FINANCE);
+
+    if (isOnlyRep) {
       throw new ForbiddenError('Sales Representatives are not authorized to approve quotations');
     }
 
     if (approval.approvalLevel === ApprovalLevels.MANAGER) {
-      if (userRole !== Roles.ADMIN && userRole !== Roles.SALES_MANAGER) {
+      if (!userRoleList.includes(Roles.ADMIN) && !userRoleList.includes(Roles.SALES_MANAGER)) {
         throw new ForbiddenError('Only Sales Managers or Administrators can approve Manager-level approvals');
       }
     } else if (approval.approvalLevel === ApprovalLevels.FINANCE) {
-      if (userRole !== Roles.ADMIN && userRole !== Roles.FINANCE_OPERATIONS) {
-        throw new ForbiddenError('Only Finance & Operations officers or Administrators can approve Finance-level approvals');
+      if (!userRoleList.includes(Roles.ADMIN) && !userRoleList.includes(Roles.FINANCE)) {
+        throw new ForbiddenError('Only Finance officers or Administrators can approve Finance-level approvals');
       }
     }
 
@@ -256,7 +277,7 @@ export class ApprovalRoutingService {
       );
     }
 
-    return await this.db.transaction(async (trx) => {
+    const result = await this.db.transaction(async (trx) => {
       // 1. Update this approval
       const updatedApproval = await this.repository.updateApproval(
         approvalId,
@@ -281,7 +302,7 @@ export class ApprovalRoutingService {
         if (nextStep.approvalLevel === ApprovalLevels.FINANCE) {
           nextQuotationStatus = QuotationStatuses.PENDING_FINANCE_APPROVAL;
         } else {
-          nextQuotationStatus = QuotationStatuses.PENDING_MANAGER_APPROVAL;
+          nextQuotationStatus = QuotationStatuses.PENDING_APPROVAL;
         }
       }
 
@@ -299,6 +320,9 @@ export class ApprovalRoutingService {
         remainingApprovalsCount: remainingPending.length,
       };
     });
+
+    quotationsRepository.invalidateCache();
+    return result;
   }
 
   /**
@@ -307,7 +331,7 @@ export class ApprovalRoutingService {
   public async rejectApproval(
     approvalId: string,
     userId: string,
-    userRole: string,
+    userRole: string | string[],
     comments: string
   ) {
     const approval = await this.repository.getApprovalById(approvalId);
@@ -319,22 +343,38 @@ export class ApprovalRoutingService {
       throw new BadRequestError(`Approval is already in '${approval.status}' state`);
     }
 
+    // Verify associated quotation exists
+    const [quotation] = await this.db
+      .select()
+      .from(quotations)
+      .where(eq(quotations.id, approval.quotationId));
+
+    if (!quotation) {
+      throw new NotFoundError(`Associated quotation with ID '${approval.quotationId}' was not found`);
+    }
+
     // Role-based authorization
-    if (userRole === Roles.SALES_REP) {
+    const userRoleList = Array.isArray(userRole) ? userRole : [userRole];
+    const isOnlyRep = userRoleList.includes(Roles.SALES_REP) &&
+      !userRoleList.includes(Roles.ADMIN) &&
+      !userRoleList.includes(Roles.SALES_MANAGER) &&
+      !userRoleList.includes(Roles.FINANCE);
+
+    if (isOnlyRep) {
       throw new ForbiddenError('Sales Representatives are not authorized to reject quotation approvals');
     }
 
     if (approval.approvalLevel === ApprovalLevels.MANAGER) {
-      if (userRole !== Roles.ADMIN && userRole !== Roles.SALES_MANAGER) {
+      if (!userRoleList.includes(Roles.ADMIN) && !userRoleList.includes(Roles.SALES_MANAGER)) {
         throw new ForbiddenError('Only Sales Managers or Administrators can reject Manager-level approvals');
       }
     } else if (approval.approvalLevel === ApprovalLevels.FINANCE) {
-      if (userRole !== Roles.ADMIN && userRole !== Roles.FINANCE_OPERATIONS) {
-        throw new ForbiddenError('Only Finance & Operations officers or Administrators can reject Finance-level approvals');
+      if (!userRoleList.includes(Roles.ADMIN) && !userRoleList.includes(Roles.FINANCE)) {
+        throw new ForbiddenError('Only Finance officers or Administrators can reject Finance-level approvals');
       }
     }
 
-    return await this.db.transaction(async (trx) => {
+    const result = await this.db.transaction(async (trx) => {
       // 1. Update this approval to REJECTED
       const updatedApproval = await this.repository.updateApproval(
         approvalId,
@@ -364,6 +404,9 @@ export class ApprovalRoutingService {
         quotationStatus: QuotationStatuses.REJECTED,
       };
     });
+
+    quotationsRepository.invalidateCache();
+    return result;
   }
 
   /**
@@ -383,6 +426,7 @@ export class ApprovalRoutingService {
 
     // If quotation was in an approval workflow state or approved/rejected, revert to DRAFT
     const affectedStatuses: string[] = [
+      QuotationStatuses.PENDING_APPROVAL,
       QuotationStatuses.PENDING_MANAGER_APPROVAL,
       QuotationStatuses.PENDING_FINANCE_APPROVAL,
       QuotationStatuses.APPROVED,
@@ -398,6 +442,10 @@ export class ApprovalRoutingService {
           updatedAt: new Date(),
         })
         .where(eq(quotations.id, quotationId));
+      
+      quotationsRepository.invalidateCache();
     }
   }
 }
+
+export const approvalRoutingService = new ApprovalRoutingService();

@@ -181,7 +181,7 @@ export class DiscountGovernanceController {
         allowedLevels = undefined; // see all
       } else if (userRoles.includes(Roles.SALES_MANAGER)) {
         allowedLevels = [ApprovalLevels.MANAGER];
-      } else if (userRoles.includes(Roles.FINANCE_OPERATIONS)) {
+      } else if (userRoles.includes(Roles.FINANCE)) {
         allowedLevels = [ApprovalLevels.FINANCE];
       } else {
         // Sales Reps or other roles cannot view approvals
@@ -240,12 +240,12 @@ export class DiscountGovernanceController {
       const approvalId = req.params.id;
       const validatedBody = approveApprovalSchema.parse(req.body);
       const userId = req.user.userId;
-      const userRole = req.user.roles[0] || Roles.SALES_REP;
+      const userRoles = req.user.roles;
 
       const result = await this.approvalRoutingService.approveApproval(
         approvalId,
         userId,
-        userRole,
+        userRoles,
         validatedBody.comments
       );
 
@@ -272,12 +272,12 @@ export class DiscountGovernanceController {
       const approvalId = req.params.id;
       const validatedBody = rejectApprovalSchema.parse(req.body);
       const userId = req.user.userId;
-      const userRole = req.user.roles[0] || Roles.SALES_REP;
+      const userRoles = req.user.roles;
 
       const result = await this.approvalRoutingService.rejectApproval(
         approvalId,
         userId,
-        userRole,
+        userRoles,
         validatedBody.comments
       );
 

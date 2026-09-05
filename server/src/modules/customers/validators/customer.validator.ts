@@ -23,13 +23,19 @@ export const updateCustomerStatusSchema = z.object({
   status: z.enum([CustomerStatuses.ACTIVE, CustomerStatuses.INACTIVE]),
 });
 
-export const customerQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
-  search: z.string().trim().optional(),
-  customerTierId: z.string().uuid().optional(),
-  status: z.enum([CustomerStatuses.ACTIVE, CustomerStatuses.INACTIVE]).optional(),
-});
+export const customerQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().optional().default(1),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional(),
+    search: z.string().trim().optional(),
+    customerTierId: z.string().uuid().optional(),
+    status: z.enum([CustomerStatuses.ACTIVE, CustomerStatuses.INACTIVE]).optional(),
+  })
+  .transform((data) => ({
+    ...data,
+    limit: data.pageSize || data.limit || 20,
+  }));
 
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
 export type UpdateCustomerInput = z.infer<typeof updateCustomerSchema>;

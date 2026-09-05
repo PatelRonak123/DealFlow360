@@ -4,7 +4,10 @@ export interface AuthUserContext {
   name: string;
   roles: string[];
   permissions: string[];
+  customerId?: string;
+  customerName?: string;
 }
+
 
 export interface LoginCredentials {
   email: string;
@@ -15,6 +18,7 @@ export interface RegisterCredentials {
   name: string;
   email: string;
   password: string;
+  companyName?: string;
 }
 
 export interface AuthResult {

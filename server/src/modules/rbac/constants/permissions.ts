@@ -49,14 +49,34 @@ export const Permissions = {
   DISCOUNT_APPROVE: 'discount:approve',
   DISCOUNT_OVERRIDE: 'discount:override',
 
+  // Recommendations & Upsell / Cross-Sell
+  RECOMMENDATION_READ: 'recommendation:read',
+  RECOMMENDATION_MANAGE: 'recommendation:manage',
+  RECOMMENDATION_RULE_CREATE: 'recommendation_rule:create',
+  RECOMMENDATION_RULE_READ: 'recommendation_rule:read',
+  RECOMMENDATION_RULE_UPDATE: 'recommendation_rule:update',
+  RECOMMENDATION_RULE_DELETE: 'recommendation_rule:delete',
+  RECOMMENDATION_ACCEPT: 'recommendation:accept',
+  RECOMMENDATION_DISMISS: 'recommendation:dismiss',
+
   // Billing & Payments
   BILLING_READ: 'billing:read',
   BILLING_MANAGE: 'billing:manage',
   PAYMENT_PROCESS: 'payment:process',
 
+  // Warehouses
+  WAREHOUSE_READ: 'warehouse:read',
+  WAREHOUSE_MANAGE: 'warehouse:manage',
+
   // Inventory & Fulfillment
   INVENTORY_READ: 'inventory:read',
   INVENTORY_MANAGE: 'inventory:manage',
+  INVENTORY_ADJUST: 'inventory:adjust',
+  FULFILLMENT_READ: 'fulfillment:read',
+  FULFILLMENT_CREATE: 'fulfillment:create',
+  FULFILLMENT_UPDATE: 'fulfillment:update',
+  FULFILLMENT_CANCEL: 'fulfillment:cancel',
+  FULFILLMENT_COMPLETE: 'fulfillment:complete',
   FULFILLMENT_MANAGE: 'fulfillment:manage',
 
   // Reports & Analytics

@@ -11,6 +11,7 @@ export const pool = new Pool({
   max: databaseConfig.maxConnections,
   idleTimeoutMillis: databaseConfig.idleTimeoutMillis,
   connectionTimeoutMillis: databaseConfig.connectionTimeoutMillis,
+  keepAlive: true,
   ssl: databaseConfig.ssl ? { rejectUnauthorized: false } : false,
 });
 

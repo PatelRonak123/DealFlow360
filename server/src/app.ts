@@ -18,6 +18,7 @@ import { pricingRouter } from './modules/pricing/index.js';
 import { discountGovernanceRouter } from './modules/discount-governance/index.js';
 import { quotationsRouter } from './modules/quotations/index.js';
 import { approvalsRouter } from './modules/approvals/index.js';
+import { recommendationRulesRouter } from './modules/recommendations/index.js';
 import { upsellCrossSellRouter } from './modules/upsell-cross-sell/index.js';
 import { inventoryRouter } from './modules/inventory/index.js';
 import { warehousesRouter } from './modules/warehouses/index.js';
@@ -77,6 +78,7 @@ export function createApp(): Express {
   app.use(`${prefix}/discount-governance`, discountGovernanceRouter);
   app.use(`${prefix}/quotations`, quotationsRouter);
   app.use(`${prefix}/approvals`, approvalsRouter);
+  app.use(`${prefix}/recommendation-rules`, recommendationRulesRouter);
   app.use(`${prefix}/upsell-cross-sell`, upsellCrossSellRouter);
   app.use(`${prefix}/inventory`, inventoryRouter);
   app.use(`${prefix}/warehouses`, warehousesRouter);
