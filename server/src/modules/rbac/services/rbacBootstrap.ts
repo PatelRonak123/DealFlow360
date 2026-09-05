@@ -86,6 +86,8 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       Permissions.FULFILLMENT_CREATE,
       Permissions.FULFILLMENT_UPDATE,
       Permissions.FULFILLMENT_CANCEL,
+      Permissions.FULFILLMENT_COMPLETE,
+      Permissions.BILLING_READ,
     ],
   },
   {
