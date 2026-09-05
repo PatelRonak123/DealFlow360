@@ -1,14 +1,21 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
+import { useSidebar } from '@/context/SidebarContext';
 
 export function DashboardLayout() {
+  const { isCollapsed } = useSidebar();
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#f5f7ff]">
+    <div className="min-h-screen w-full bg-[#f5f7ff]">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col h-full overflow-hidden">
+      <div
+        className={`flex min-w-0 flex-1 flex-col min-h-screen transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'lg:pl-20' : 'lg:pl-64'
+        }`}
+      >
         <Topbar />
-        <main className="min-w-0 flex-1 overflow-y-auto p-6 lg:p-10">
+        <main className="min-w-0 flex-1 p-6 lg:p-10">
           <Outlet />
         </main>
       </div>

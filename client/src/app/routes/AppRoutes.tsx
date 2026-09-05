@@ -9,10 +9,30 @@ import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 // Dashboards
 import { SalesRepDashboard } from '@/features/dashboard/components/SalesRepDashboard';
 import {
-  FinanceDashboard,
-  AdminDashboard,
-} from '@/features/dashboard/components/OtherRoleDashboards';
+  FinanceDashboardPage,
+  FinanceApprovalsPage,
+  FinanceApprovalDetailPage,
+  FinanceInvoicesPage,
+  FinanceInvoiceDetailPage,
+  FinancePaymentsPage,
+  FinanceBillingPage,
+  FinanceSubscriptionsPage,
+} from '@/features/finance';
 import { SalesManagerDashboard } from '@/features/dashboard/components/SalesManagerDashboard';
+import {
+  AdminDashboardPage,
+  AdminUsersPage,
+  AdminRolesPage,
+  AdminPermissionsPage,
+  AdminProductCategoriesPage,
+  AdminProductsPage,
+  AdminPriceListsPage,
+  AdminCustomerTiersPage,
+  AdminDiscountRulesPage,
+  AdminWarehousesPage,
+  AdminSubscriptionPlansPage,
+  AdminSettingsPage,
+} from '@/features/admin';
 
 // Customer Portal Pages
 import {
@@ -110,7 +130,7 @@ export const AppRoutes: React.FC = () => {
             path="/admin/dashboard"
             element={
               <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Admin Control Center">
-                <AdminDashboard />
+                <AdminDashboardPage />
               </RoleGuard>
             }
           />
@@ -140,7 +160,85 @@ export const AppRoutes: React.FC = () => {
                 allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
                 moduleName="Commercial Finance Workspace"
               >
-                <FinanceDashboard />
+                <FinanceDashboardPage />
+              </RoleGuard>
+            }
+          />
+          <Route path="/finance" element={<Navigate to="/finance/dashboard" replace />} />
+          <Route
+            path="/finance/approvals"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Finance Approvals Queue"
+              >
+                <FinanceApprovalsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/approvals/:id"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Financial Deal Review"
+              >
+                <FinanceApprovalDetailPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/invoices"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Commercial Invoices"
+              >
+                <FinanceInvoicesPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/invoices/:id"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Invoice Details"
+              >
+                <FinanceInvoiceDetailPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/payments"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Payments Ledger"
+              >
+                <FinancePaymentsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/billing"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Billing Schedule"
+              >
+                <FinanceBillingPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/subscriptions"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Subscription Contracts"
+              >
+                <FinanceSubscriptionsPage />
               </RoleGuard>
             }
           />
@@ -289,34 +387,103 @@ export const AppRoutes: React.FC = () => {
             }
           />
 
-          {/* Admin Protected Routes */}
+          {/* Admin Protected Routes: Access Management */}
           <Route
-            path="/admin/*"
+            path="/admin/users"
             element={
-              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="System Administration">
-                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
-                  <h2 className="text-xl font-bold text-[#17213a]">System Administration &amp; Governance</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    User Accounts, RBAC matrix, and security auditing logs.
-                  </p>
-                </div>
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="User Accounts">
+                <AdminUsersPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/admin/roles"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Role Management">
+                <AdminRolesPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/admin/permissions"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Permissions Registry">
+                <AdminPermissionsPage />
               </RoleGuard>
             }
           />
 
+          {/* Admin Protected Routes: Business Configuration */}
           <Route
-            path="/config/*"
+            path="/admin/product-categories"
             element={
-              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="System Configuration">
-                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
-                  <h2 className="text-xl font-bold text-[#17213a]">Enterprise Price Books &amp; Discount Governance Rules</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Configure master discount policies, customer tiers, and fulfillment warehouses.
-                  </p>
-                </div>
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Product Categories">
+                <AdminProductCategoriesPage />
               </RoleGuard>
             }
           />
+          <Route
+            path="/admin/products"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Product Catalog">
+                <AdminProductsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/admin/price-lists"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Price Books">
+                <AdminPriceListsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/admin/customer-tiers"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Customer Tiers">
+                <AdminCustomerTiersPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/admin/discount-rules"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Discount Governance">
+                <AdminDiscountRulesPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/admin/warehouses"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Warehouses">
+                <AdminWarehousesPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/admin/subscription-plans"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Subscription Plans">
+                <AdminSubscriptionPlansPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/admin/settings"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Platform Settings">
+                <AdminSettingsPage />
+              </RoleGuard>
+            }
+          />
+
+          {/* Legacy & Config Redirects */}
+          <Route path="/config/products" element={<Navigate to="/admin/products" replace />} />
+          <Route path="/config/discount-rules" element={<Navigate to="/admin/discount-rules" replace />} />
+          <Route path="/config/warehouses" element={<Navigate to="/admin/warehouses" replace />} />
+          <Route path="/config/subscription-plans" element={<Navigate to="/admin/subscription-plans" replace />} />
         </Route>
       </Route>
       </Route>

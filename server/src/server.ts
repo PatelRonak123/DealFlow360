@@ -15,6 +15,13 @@ const server = app.listen(appConfig.port, async () => {
     await client.query('SELECT 1');
     client.release();
     console.log('[DealFlow360 API] Database connection pool initialized & warm.');
+
+    // Initialize admin and finance tables if missing
+    const { initAdminTables } = await import('./database/initAdminTables.js');
+    await initAdminTables();
+
+    const { initFinanceTables } = await import('./database/initFinanceTables.js');
+    await initFinanceTables();
   } catch (err) {
     console.warn('[DealFlow360 API] Database pool pre-warm check:', err);
   }

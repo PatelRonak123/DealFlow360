@@ -20,7 +20,10 @@ export const CustomerPortalLayout: React.FC = () => {
   const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  const { data: customerProfile } = useCustomerProfile();
+  const { data: customerProfile } = useCustomerProfile({
+    userEmail: user?.email,
+    enabled: Boolean(user?.email),
+  });
 
   const handleLogout = async () => {
     await logout();

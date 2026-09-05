@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useCustomerQuotations } from '../hooks';
 import { StatusBadge, CustomerLoadingState, CustomerEmptyState, CustomerErrorState } from '../components';
-import { Search, Eye, Tag } from 'lucide-react';
+import { Pagination } from '@/components/ui/Pagination';
+import { useDebounce } from '@/hooks/useDebounce';
+import { Search, Eye, Tag, X } from 'lucide-react';
 
 const STATUS_TABS = [
   { label: 'All Quotations', value: 'ALL' },
@@ -16,11 +18,27 @@ const STATUS_TABS = [
 export const MyQuotationsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
-  const { data: quotations, isLoading, isError, refetch } = useCustomerQuotations({
-    search: search || undefined,
+  // Debounce search query by 300ms to optimize API requests
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Reset page to 1 whenever search query or status filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, statusFilter]);
+
+  const { data: result, isLoading, isError, refetch } = useCustomerQuotations({
+    search: debouncedSearch.trim() || undefined,
     status: statusFilter,
+    page: currentPage,
+    limit: pageSize,
   });
+
+  const quotations = result?.items || [];
+  const totalItems = result?.total || 0;
+  const totalPages = result?.totalPages || 1;
 
   return (
     <div className="space-y-6">
@@ -36,16 +54,26 @@ export const MyQuotationsPage: React.FC = () => {
 
       {/* Filter Tabs & Search */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-[#e7ebf7] bg-white p-4 shadow-sm">
-        {/* Search */}
+        {/* Debounced Search */}
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3.5 top-3 h-4 w-4 text-[#8491aa]" />
           <input
             type="text"
-            placeholder="Search by quote # or SKU..."
+            placeholder="Search by quote #, SKU, or product..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-[#e4e9f7] bg-[#f7f8ff] py-2 pl-10 pr-4 text-xs font-medium text-[#17213a] placeholder-[#8491aa] focus:border-[#3568ed] focus:outline-none focus:ring-1 focus:ring-[#3568ed]"
+            className="w-full rounded-xl border border-[#e4e9f7] bg-[#f7f8ff] py-2 pl-10 pr-9 text-xs font-medium text-[#17213a] placeholder-[#8491aa] focus:border-[#3568ed] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#3568ed]/15 transition-all"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition"
+              title="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Status Tab Pills */}
@@ -57,7 +85,7 @@ export const MyQuotationsPage: React.FC = () => {
                 key={tab.value}
                 type="button"
                 onClick={() => setStatusFilter(tab.value)}
-                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
                   isSelected
                     ? 'bg-[#3568ed] text-white shadow-md shadow-[#3568ed]/20'
                     : 'bg-[#f7f8ff] text-[#647592] hover:bg-[#edf4ff] hover:text-[#3568ed]'
@@ -75,14 +103,19 @@ export const MyQuotationsPage: React.FC = () => {
         <CustomerLoadingState message="Loading your commercial quotations..." />
       ) : isError ? (
         <CustomerErrorState onRetry={() => refetch()} />
-      ) : !quotations || quotations.length === 0 ? (
+      ) : quotations.length === 0 ? (
         <CustomerEmptyState
           title="No Quotations Found"
-          description="There are no quotations matching your active filters or search criteria."
+          description={
+            debouncedSearch || statusFilter !== 'ALL'
+              ? 'There are no quotations matching your active filters or search criteria.'
+              : 'You do not have any commercial quotations created yet.'
+          }
           actionText="Clear Filters"
           onAction={() => {
             setSearch('');
             setStatusFilter('ALL');
+            setCurrentPage(1);
           }}
         />
       ) : (
@@ -140,7 +173,7 @@ export const MyQuotationsPage: React.FC = () => {
                       <div className="inline-flex items-center gap-2">
                         <Link
                           to={`/customer/quotations/${quote.id}`}
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#3568ed] shadow-sm transition hover:bg-[#edf4ff] hover:border-[#3568ed]/40"
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#3568ed] shadow-sm transition hover:bg-[#edf4ff] hover:border-[#3568ed]/40 cursor-pointer"
                         >
                           <Eye className="h-3.5 w-3.5" />
                           <span>View Quotation</span>
@@ -151,6 +184,23 @@ export const MyQuotationsPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Footer */}
+          <div className="border-t border-[#e7ebf7] bg-[#f8faff]/70 px-6 py-4">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              itemLabel="quotations"
+              isLoading={isLoading}
+            />
           </div>
         </div>
       )}

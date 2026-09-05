@@ -1,5 +1,6 @@
 export type BackendQuotationStatus =
   | 'DRAFT'
+  | 'PENDING_APPROVAL'
   | 'PENDING_MANAGER_APPROVAL'
   | 'PENDING_FINANCE_APPROVAL'
   | 'APPROVED'
@@ -7,6 +8,8 @@ export type BackendQuotationStatus =
   | 'SENT'
   | 'NEGOTIATION'
   | 'WON'
+  | 'CONFIRMED'
+  | 'ORDERED'
   | 'LOST'
   | 'CANCELLED'
   | 'EXPIRED';

@@ -3,6 +3,7 @@ import {
   quotations,
   quotationItems,
   customers,
+  customerTiers,
   priceLists,
   users,
   Quotation,
@@ -10,6 +11,7 @@ import {
   QuotationItem,
   NewQuotationItem,
   Customer,
+  CustomerTier,
   PriceList,
   User,
   Product,
@@ -22,7 +24,7 @@ export interface QuotationItemWithProduct extends QuotationItem {
 }
 
 export interface QuotationWithDetails extends Quotation {
-  customer?: Customer;
+  customer?: Customer & { customerTier?: CustomerTier };
   priceList?: PriceList;
   createdByUser?: Pick<User, 'id' | 'name' | 'email'>;
   items?: QuotationItemWithProduct[];
@@ -140,11 +142,12 @@ export class QuotationsRepository {
               .from(quotations)
               .where(whereClause);
 
-        // Rows query: fetch quotations with joined customer and user
+        // Rows query: fetch quotations with joined customer, tier, and user
         const rowsQuery = client
           .select({
             quotation: quotations,
             customer: customers,
+            customerTier: customerTiers,
             priceList: priceLists,
             user: {
               id: users.id,
@@ -154,6 +157,7 @@ export class QuotationsRepository {
           })
           .from(quotations)
           .leftJoin(customers, eq(quotations.customerId, customers.id))
+          .leftJoin(customerTiers, eq(customers.customerTierId, customerTiers.id))
           .leftJoin(priceLists, eq(quotations.priceListId, priceLists.id))
           .leftJoin(users, eq(quotations.createdBy, users.id))
           .where(whereClause)
@@ -168,7 +172,12 @@ export class QuotationsRepository {
 
         const items: QuotationWithDetails[] = rows.map((r) => ({
           ...r.quotation,
-          customer: r.customer || undefined,
+          customer: r.customer
+            ? {
+                ...r.customer,
+                customerTier: r.customerTier || undefined,
+              }
+            : undefined,
           priceList: r.priceList || undefined,
           createdByUser: r.user && r.user.id ? (r.user as Pick<User, 'id' | 'name' | 'email'>) : undefined,
         }));
@@ -200,7 +209,11 @@ export class QuotationsRepository {
     const row = await client.query.quotations.findFirst({
       where: eq(quotations.id, id),
       with: {
-        customer: true,
+        customer: {
+          with: {
+            customerTier: true,
+          },
+        },
         priceList: true,
         createdByUser: {
           columns: {

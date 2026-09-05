@@ -194,3 +194,18 @@ export interface CustomerProfile {
   tierName: string;
   taxId?: string;
 }
+
+export interface CustomerPortalPaginationParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+}
+
+export interface CustomerPortalPaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}

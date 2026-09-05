@@ -15,6 +15,14 @@ import {
   Tag,
   ArrowRight,
   CheckCheck,
+  Menu,
+  PanelLeft,
+  X,
+  Loader2,
+  Building,
+  Package,
+  User,
+  Repeat,
 } from 'lucide-react';
 import { RoleBadge } from '@/components/common/RoleBadge';
 import { useAuth } from '@/features/auth';
@@ -23,6 +31,8 @@ import { useAppNotifications } from '@/features/notifications/hooks/useAppNotifi
 import { useNavigate } from 'react-router-dom';
 import { normalizeRole, getDashboardPathForRole, ROLES } from '@/lib/accessControl';
 import { UserRole } from '@/types/Auth';
+import { useSidebar } from '@/context/SidebarContext';
+import { useGlobalSearch, SearchResultItem } from '@/features/search';
 
 function formatRelativeTime(dateString: string): string {
   try {
@@ -89,7 +99,8 @@ export function Topbar() {
 
   // If customer role and user?.name is not yet known, optionally fetch profile data
   const { data: customerProfile, isLoading: isProfileLoading } = useCustomerProfile({
-    enabled: isCustomer && !user?.name,
+    userEmail: user?.email,
+    enabled: isCustomer && !user?.name && Boolean(user?.email),
   });
 
   const isNameLoading = isAuthLoading || (isCustomer && isProfileLoading && !user?.name);
@@ -106,6 +117,33 @@ export function Topbar() {
     displayName = isCustomer ? 'Customer' : 'User';
   }
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: searchData, isFetching: isSearching } = useGlobalSearch(searchQuery);
+
+  const totalResults = searchData?.total || 0;
+  const hasResults = totalResults > 0;
+  const showDropdown = isSearchOpen && searchQuery.trim().length >= 2;
+
+  // Global Ctrl+K shortcut
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setIsSearchOpen(true);
+      }
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -114,6 +152,9 @@ export function Topbar() {
       }
       if (roleRef.current && !roleRef.current.contains(event.target as Node)) {
         setShowRoleSwitcher(false);
+      }
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -140,16 +181,274 @@ export function Topbar() {
     }
   };
 
+  const handleSelectSearchResult = (item: SearchResultItem) => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    navigate(item.link);
+  };
+
+  const { toggleSidebar, toggleMobileSidebar } = useSidebar();
+
   return (
-    <header className="sticky top-0 z-20 flex h-18 shrink-0 items-center justify-between gap-6 border-b border-[#e7ebf7] bg-white/95 px-8 backdrop-blur shadow-[0_2px_12px_rgba(61,82,140,0.04)]">
-      {/* Search Input */}
-      <div className="flex h-10 w-full max-w-sm items-center gap-3 rounded-xl border border-[#e4e9f7] bg-[#f7f8ff] px-3.5 text-[#8491aa] focus-within:border-[#3568ed] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#3568ed]/15 transition-all">
-        <Search className="h-4 w-4 shrink-0 text-[#8491aa]" />
-        <input
-          type="text"
-          placeholder="Search quotes, deals, accounts..."
-          className="w-full bg-transparent text-sm text-[#17213a] placeholder:text-[#8491aa] focus:outline-none"
-        />
+    <header className="sticky top-0 z-20 flex h-18 shrink-0 items-center justify-between gap-4 border-b border-[#e7ebf7] bg-white/95 px-4 sm:px-8 backdrop-blur shadow-[0_2px_12px_rgba(61,82,140,0.04)]">
+      {/* Left side: Toggle button and Search */}
+      <div className="flex items-center gap-3 w-full max-w-lg">
+        {/* Mobile menu trigger */}
+        <button
+          type="button"
+          onClick={toggleMobileSidebar}
+          title="Open navigation menu"
+          className="flex lg:hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#e7ebf7] bg-white text-[#59657d] hover:bg-[#f0f3ff] hover:text-[#3568ed] transition-colors cursor-pointer"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+
+        {/* Desktop collapse toggle button */}
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          title="Toggle sidebar"
+          className="hidden lg:flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#e7ebf7] bg-white text-[#59657d] hover:bg-[#f0f3ff] hover:text-[#3568ed] hover:border-[#cad7f5] transition-all cursor-pointer"
+        >
+          <PanelLeft className="h-4.5 w-4.5" />
+        </button>
+
+        {/* Global Search Input & Dropdown Popup */}
+        <div className="relative w-full" ref={searchContainerRef}>
+          <div className="flex h-10 w-full items-center gap-2.5 rounded-xl border border-[#e4e9f7] bg-[#f7f8ff] px-3.5 text-[#8491aa] focus-within:border-[#3568ed] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#3568ed]/15 transition-all">
+            {isSearching ? (
+              <Loader2 className="h-4 w-4 shrink-0 text-[#3568ed] animate-spin" />
+            ) : (
+              <Search className="h-4 w-4 shrink-0 text-[#8491aa]" />
+            )}
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchOpen(true);
+              }}
+              onFocus={() => setIsSearchOpen(true)}
+              placeholder="Search quotes, deals, accounts, products (Ctrl+K)..."
+              className="w-full bg-transparent text-sm text-[#17213a] placeholder:text-[#8491aa] focus:outline-none"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+                className="text-gray-400 hover:text-gray-600 cursor-pointer p-0.5"
+                title="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-400 select-none">
+              ⌘K
+            </kbd>
+          </div>
+
+          {/* Search Results Dropdown Popup */}
+          {showDropdown && (
+            <div className="absolute left-0 top-full mt-2 w-full min-w-[320px] sm:min-w-[440px] max-h-[480px] overflow-y-auto rounded-2xl border border-[#e2e8f5] bg-white p-3 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between border-b border-gray-100 px-2 pb-2 mb-2 text-xs text-gray-500 font-medium">
+                <span>Search results for "{searchQuery}"</span>
+                {totalResults > 0 && (
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-[#3568ed]">
+                    {totalResults} matches
+                  </span>
+                )}
+              </div>
+
+              {isSearching && totalResults === 0 && (
+                <div className="py-8 text-center text-xs text-gray-500">
+                  <Loader2 className="mx-auto h-5 w-5 animate-spin text-[#3568ed] mb-2" />
+                  Searching across platform records...
+                </div>
+              )}
+
+              {!isSearching && totalResults === 0 && (
+                <div className="py-8 text-center text-xs text-gray-500">
+                  <Search className="mx-auto h-6 w-6 text-gray-300 mb-2" />
+                  No matching quotations, deals, or accounts found.
+                </div>
+              )}
+
+              {hasResults && (
+                <div className="space-y-3">
+                  {/* Quotations Group */}
+                  {searchData?.results.quotations && searchData.results.quotations.length > 0 && (
+                    <div>
+                      <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center gap-1.5">
+                        <FileText className="h-3 w-3 text-blue-500" /> Quotations
+                      </p>
+                      <div className="space-y-1">
+                        {searchData.results.quotations.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectSearchResult(item)}
+                            className="flex items-center justify-between rounded-xl px-2.5 py-2 text-xs hover:bg-[#f0f4ff] transition-colors cursor-pointer group"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-[#17213a] group-hover:text-[#3568ed] transition-colors truncate">
+                                {item.title}
+                              </p>
+                              <p className="text-[11px] text-gray-500 truncate mt-0.5">{item.subtitle}</p>
+                            </div>
+                            <span className="shrink-0 ml-2 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-[#3568ed]">
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Invoices Group */}
+                  {searchData?.results.invoices && searchData.results.invoices.length > 0 && (
+                    <div>
+                      <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center gap-1.5">
+                        <Receipt className="h-3 w-3 text-emerald-500" /> Invoices
+                      </p>
+                      <div className="space-y-1">
+                        {searchData.results.invoices.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectSearchResult(item)}
+                            className="flex items-center justify-between rounded-xl px-2.5 py-2 text-xs hover:bg-[#f0f4ff] transition-colors cursor-pointer group"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-[#17213a] group-hover:text-[#3568ed] transition-colors truncate">
+                                {item.title}
+                              </p>
+                              <p className="text-[11px] text-gray-500 truncate mt-0.5">{item.subtitle}</p>
+                            </div>
+                            <span className="shrink-0 ml-2 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Customers Group */}
+                  {searchData?.results.customers && searchData.results.customers.length > 0 && (
+                    <div>
+                      <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center gap-1.5">
+                        <Building className="h-3 w-3 text-indigo-500" /> Customers & Accounts
+                      </p>
+                      <div className="space-y-1">
+                        {searchData.results.customers.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectSearchResult(item)}
+                            className="flex items-center justify-between rounded-xl px-2.5 py-2 text-xs hover:bg-[#f0f4ff] transition-colors cursor-pointer group"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-[#17213a] group-hover:text-[#3568ed] transition-colors truncate">
+                                {item.title}
+                              </p>
+                              <p className="text-[11px] text-gray-500 truncate mt-0.5">{item.subtitle}</p>
+                            </div>
+                            <ArrowRight className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#3568ed] group-hover:translate-x-0.5 transition-all" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Products Group */}
+                  {searchData?.results.products && searchData.results.products.length > 0 && (
+                    <div>
+                      <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center gap-1.5">
+                        <Package className="h-3 w-3 text-purple-500" /> Products Catalog
+                      </p>
+                      <div className="space-y-1">
+                        {searchData.results.products.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectSearchResult(item)}
+                            className="flex items-center justify-between rounded-xl px-2.5 py-2 text-xs hover:bg-[#f0f4ff] transition-colors cursor-pointer group"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-[#17213a] group-hover:text-[#3568ed] transition-colors truncate">
+                                {item.title}
+                              </p>
+                              <p className="text-[11px] text-gray-500 truncate mt-0.5">{item.subtitle}</p>
+                            </div>
+                            <span className="shrink-0 ml-2 rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700">
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Users Group (Admin) */}
+                  {searchData?.results.users && searchData.results.users.length > 0 && (
+                    <div>
+                      <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center gap-1.5">
+                        <User className="h-3 w-3 text-amber-500" /> System Users
+                      </p>
+                      <div className="space-y-1">
+                        {searchData.results.users.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectSearchResult(item)}
+                            className="flex items-center justify-between rounded-xl px-2.5 py-2 text-xs hover:bg-[#f0f4ff] transition-colors cursor-pointer group"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-[#17213a] group-hover:text-[#3568ed] transition-colors truncate">
+                                {item.title}
+                              </p>
+                              <p className="text-[11px] text-gray-500 truncate mt-0.5">{item.subtitle}</p>
+                            </div>
+                            <span className="shrink-0 ml-2 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Subscriptions Group */}
+                  {searchData?.results.subscriptions && searchData.results.subscriptions.length > 0 && (
+                    <div>
+                      <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center gap-1.5">
+                        <Repeat className="h-3 w-3 text-pink-500" /> Subscriptions & Plans
+                      </p>
+                      <div className="space-y-1">
+                        {searchData.results.subscriptions.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectSearchResult(item)}
+                            className="flex items-center justify-between rounded-xl px-2.5 py-2 text-xs hover:bg-[#f0f4ff] transition-colors cursor-pointer group"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-[#17213a] group-hover:text-[#3568ed] transition-colors truncate">
+                                {item.title}
+                              </p>
+                              <p className="text-[11px] text-gray-500 truncate mt-0.5">{item.subtitle}</p>
+                            </div>
+                            <span className="shrink-0 ml-2 rounded-md bg-pink-50 px-2 py-0.5 text-[10px] font-bold text-pink-700">
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-4">

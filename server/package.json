@@ -15,6 +15,7 @@
     "db:generate": "tsx ../node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed": "tsx src/database/seed.ts",
+    "db:setup": "tsx src/database/setupFreshDb.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
