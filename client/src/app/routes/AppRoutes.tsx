@@ -4,10 +4,35 @@ import { AuthLayout } from '../layouts';
 import { Login, Signup } from '@/features/auth';
 import { ProtectedRoute } from './ProtectedRoute';
 import { DashboardLayout } from '@/features/dashboard/layouts/DashboardLayout';
+import { CustomerPortalLayout } from '@/layouts/CustomerPortalLayout';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 
-import { customerPortalRoutes } from '@/features/customer-portal';
-// Sales Rep & Shared Modules
+// Dashboards
+import { SalesRepDashboard } from '@/features/dashboard/components/SalesRepDashboard';
+import {
+  SalesManagerDashboard,
+  FinanceDashboard,
+  AdminDashboard,
+} from '@/features/dashboard/components/OtherRoleDashboards';
+
+// Customer Portal Pages
+import {
+  CustomerDashboardPage,
+  MyQuotationsPage,
+  QuotationDetailsPage as CustomerQuotationDetailPage,
+  QuotationNegotiatePage,
+  CustomerOrdersPage,
+  CustomerOrderDetailsPage,
+  CustomerInvoicesPage,
+  CustomerInvoiceDetailsPage,
+  CustomerPaymentsPage,
+  CustomerSubscriptionsPage,
+  CustomerSubscriptionDetailsPage,
+  CustomerNotificationsPage,
+  CustomerProfilePage,
+} from '@/features/customer-portal/pages';
+
+// Sales Rep & Domain Modules
 import { PipelinePage } from '@/features/deal-health/pages/PipelinePage';
 import { QuotationsListPage } from '@/features/quotations/pages/QuotationsListPage';
 import { QuoteBuilderPage } from '@/features/quotations/pages/QuoteBuilderPage';
@@ -17,6 +42,7 @@ import { ProductsCatalogPage } from '@/features/products/pages/ProductsCatalogPa
 
 // Access Control
 import { RoleGuard } from '@/components/common/RoleGuard';
+import { ROLES } from '@/lib/accessControl';
 
 export const AppRoutes: React.FC = () => {
   return (
@@ -28,31 +54,108 @@ export const AppRoutes: React.FC = () => {
         <Route path="/register" element={<Navigate to="/signup" replace />} />
       </Route>
 
-      {/* Protected Application Workspace inside role-independent DashboardLayout */}
+      {/* Protected Application Workspace */}
       <Route element={<ProtectedRoute />}>
-        <Route element={<DashboardLayout />}>
-          {/* Dashboard (Dynamic Content Based on Role) */}
-          <Route path="/dashboard" element={<DashboardPage />} />
+        {/* Intelligent Role Dashboard Resolver */}
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
 
-          {/* Customer Portal Routes */}
-          {customerPortalRoutes}
+        {/* 1. CUSTOMER PORTAL (Isolated in CustomerPortalLayout) */}
+        <Route
+          element={
+            <RoleGuard allowedRoles={[ROLES.CUSTOMER, ROLES.ADMIN]} moduleName="Customer Portal">
+              <CustomerPortalLayout />
+            </RoleGuard>
+          }
+        >
+          <Route path="/customer/dashboard" element={<CustomerDashboardPage />} />
+          <Route path="/customer" element={<Navigate to="/customer/dashboard" replace />} />
+          <Route path="/customer/quotations" element={<MyQuotationsPage />} />
+          <Route path="/customer/quotations/:id" element={<CustomerQuotationDetailPage />} />
+          <Route path="/customer/quotations/:id/negotiate" element={<QuotationNegotiatePage />} />
+          <Route path="/customer/orders" element={<CustomerOrdersPage />} />
+          <Route path="/customer/orders/:id" element={<CustomerOrderDetailsPage />} />
+          <Route path="/customer/invoices" element={<CustomerInvoicesPage />} />
+          <Route path="/customer/invoices/:id" element={<CustomerInvoiceDetailsPage />} />
+          <Route path="/customer/payments" element={<CustomerPaymentsPage />} />
+          <Route path="/customer/subscriptions" element={<CustomerSubscriptionsPage />} />
+          <Route path="/customer/subscriptions/:id" element={<CustomerSubscriptionDetailsPage />} />
+          <Route path="/customer/notifications" element={<CustomerNotificationsPage />} />
+          <Route path="/customer/profile" element={<CustomerProfilePage />} />
+        </Route>
 
-          {/* Sales Rep: Deals & Pipeline */}
+        {/* 2. INTERNAL ENTERPRISE WORKSPACES (Rendered in DashboardLayout) */}
+        <Route
+          element={
+            <RoleGuard
+              allowedRoles={[
+                ROLES.ADMIN,
+                ROLES.SALES_REP,
+                ROLES.SALES_MANAGER,
+                ROLES.FINANCE,
+              ]}
+              moduleName="Internal Workspace"
+            >
+              <DashboardLayout />
+            </RoleGuard>
+          }
+        >
+          {/* Dedicated Role Dashboards - strictly isolated per role */}
+          <Route
+            path="/admin/dashboard"
+            element={
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="Admin Control Center">
+                <AdminDashboard />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/sales/dashboard"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.SALES_REP, ROLES.ADMIN]}
+                moduleName="Sales Representative Workspace"
+              >
+                <SalesRepDashboard />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/manager/dashboard"
+            element={
+              <RoleGuard allowedRoles={[ROLES.SALES_MANAGER, ROLES.ADMIN]} moduleName="Sales Manager Workspace">
+                <SalesManagerDashboard />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/dashboard"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Commercial Finance Workspace"
+              >
+                <FinanceDashboard />
+              </RoleGuard>
+            }
+          />
+
+          {/* Sales Workspace: Deals & Pipeline */}
           <Route
             path="/pipeline"
             element={
-              <RoleGuard allowedRoles={['sales_rep', 'sales_manager']} moduleName="Pipeline & Deals">
+              <RoleGuard allowedRoles={[ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN]} moduleName="Pipeline & Deals">
                 <PipelinePage />
               </RoleGuard>
             }
           />
           <Route path="/deals" element={<Navigate to="/pipeline" replace />} />
 
-          {/* Sales Rep: Quotations Lifecycle */}
+          {/* Sales Workspace: Quotations Lifecycle */}
           <Route
             path="/quotations"
             element={
-              <RoleGuard allowedRoles={['sales_rep', 'sales_manager', 'customer']} moduleName="Quotations">
+              <RoleGuard allowedRoles={[ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN]} moduleName="Quotations">
                 <QuotationsListPage />
               </RoleGuard>
             }
@@ -60,7 +163,7 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="/quotations/new"
             element={
-              <RoleGuard allowedRoles={['sales_rep']} moduleName="CPQ Quote Builder">
+              <RoleGuard allowedRoles={[ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN]} moduleName="CPQ Quote Builder">
                 <QuoteBuilderPage />
               </RoleGuard>
             }
@@ -68,7 +171,15 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="/quotations/:id"
             element={
-              <RoleGuard allowedRoles={['sales_rep', 'sales_manager', 'customer', 'finance_ops']} moduleName="Quotation Details">
+              <RoleGuard
+                allowedRoles={[
+                  ROLES.SALES_REP,
+                  ROLES.SALES_MANAGER,
+                  ROLES.FINANCE,
+                  ROLES.ADMIN,
+                ]}
+                moduleName="Quotation Details"
+              >
                 <QuoteDetailPage />
               </RoleGuard>
             }
@@ -76,7 +187,7 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="/quotations/:id/edit"
             element={
-              <RoleGuard allowedRoles={['sales_rep']} moduleName="CPQ Quote Editor">
+              <RoleGuard allowedRoles={[ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN]} moduleName="CPQ Quote Editor">
                 <QuoteBuilderPage />
               </RoleGuard>
             }
@@ -86,7 +197,7 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="/customers"
             element={
-              <RoleGuard allowedRoles={['sales_rep', 'sales_manager', 'admin']} moduleName="Customer Accounts">
+              <RoleGuard allowedRoles={[ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN]} moduleName="Customer Accounts">
                 <CustomersListPage />
               </RoleGuard>
             }
@@ -96,31 +207,41 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="/products"
             element={
-              <RoleGuard allowedRoles={['sales_rep', 'sales_manager', 'admin']} moduleName="Product Catalog">
+              <RoleGuard
+                allowedRoles={[ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN]}
+                moduleName="Product Catalog"
+              >
                 <ProductsCatalogPage />
               </RoleGuard>
             }
           />
 
-          {/* Manager & Finance Protected Routes (Sales Rep Restricted) */}
+          {/* Manager & Finance Protected Routes */}
           <Route
             path="/approvals"
             element={
-              <RoleGuard allowedRoles={['sales_manager', 'finance_ops']} moduleName="Multi-Tier Approvals Queue">
+              <RoleGuard
+                allowedRoles={[ROLES.SALES_MANAGER, ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Multi-Tier Approvals Queue"
+              >
                 <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
                   <h2 className="text-xl font-bold text-[#17213a]">Executive Approvals Queue</h2>
                   <p className="mt-1 text-sm text-gray-500">
-                    Accessible to Sales Managers and Finance Directors only. Sales reps track approval status directly on each quotation.
+                    Accessible to Sales Managers, Finance Officers, and Administrators. Sales reps track approval status directly on each quotation.
                   </p>
                 </div>
               </RoleGuard>
             }
           />
 
+          {/* Fulfillment Protected Routes */}
           <Route
             path="/fulfillment"
             element={
-              <RoleGuard allowedRoles={['sales_manager', 'finance_ops']} moduleName="Fulfillment Operations">
+              <RoleGuard
+                allowedRoles={[ROLES.SALES_MANAGER, ROLES.ADMIN]}
+                moduleName="Fulfillment Operations"
+              >
                 <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
                   <h2 className="text-xl font-bold text-[#17213a]">Logistics &amp; Carrier Dispatch Console</h2>
                   <p className="mt-1 text-sm text-gray-500">
@@ -131,14 +252,18 @@ export const AppRoutes: React.FC = () => {
             }
           />
 
+          {/* Billing & Subscriptions */}
           <Route
             path="/billing"
             element={
-              <RoleGuard allowedRoles={['finance_ops', 'customer']} moduleName="Billing &amp; Invoices">
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Billing &amp; Invoices"
+              >
                 <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
                   <h2 className="text-xl font-bold text-[#17213a]">Commercial Invoicing &amp; Collections</h2>
                   <p className="mt-1 text-sm text-gray-500">
-                    Restricted to Finance Operations and Customer Accounts.
+                    Restricted to Commercial Finance and Administrators.
                   </p>
                 </div>
               </RoleGuard>
@@ -148,11 +273,14 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="/subscriptions"
             element={
-              <RoleGuard allowedRoles={['finance_ops', 'sales_manager']} moduleName="Subscription Management">
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.SALES_MANAGER, ROLES.ADMIN]}
+                moduleName="Subscription Management"
+              >
                 <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
                   <h2 className="text-xl font-bold text-[#17213a]">Contract Renewals &amp; Mid-Term Amendments</h2>
                   <p className="mt-1 text-sm text-gray-500">
-                    Restricted to Subscription Operations &amp; Commercial Management.
+                    Restricted to Finance, Sales Management &amp; Administrators.
                   </p>
                 </div>
               </RoleGuard>
@@ -162,7 +290,10 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="/reports"
             element={
-              <RoleGuard allowedRoles={['sales_manager', 'finance_ops', 'admin']} moduleName="Revenue &amp; Pipeline Analytics">
+              <RoleGuard
+                allowedRoles={[ROLES.SALES_MANAGER, ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Revenue &amp; Pipeline Analytics"
+              >
                 <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
                   <h2 className="text-xl font-bold text-[#17213a]">Executive Revenue Analytics</h2>
                   <p className="mt-1 text-sm text-gray-500">
@@ -173,15 +304,15 @@ export const AppRoutes: React.FC = () => {
             }
           />
 
-          {/* Admin Protected Routes (Sales Rep Restricted) */}
+          {/* Admin Protected Routes */}
           <Route
             path="/admin/*"
             element={
-              <RoleGuard allowedRoles={['admin']} moduleName="System Administration">
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="System Administration">
                 <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
-                  <h2 className="text-xl font-bold text-[#17213a]">System Administration</h2>
+                  <h2 className="text-xl font-bold text-[#17213a]">System Administration &amp; Governance</h2>
                   <p className="mt-1 text-sm text-gray-500">
-                    Restricted to System Administrators.
+                    User Accounts, RBAC matrix, and security auditing logs.
                   </p>
                 </div>
               </RoleGuard>
@@ -191,19 +322,16 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="/config/*"
             element={
-              <RoleGuard allowedRoles={['admin']} moduleName="System Configuration">
+              <RoleGuard allowedRoles={[ROLES.ADMIN]} moduleName="System Configuration">
                 <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
                   <h2 className="text-xl font-bold text-[#17213a]">Enterprise Price Books &amp; Discount Governance Rules</h2>
                   <p className="mt-1 text-sm text-gray-500">
-                    Restricted to System Administrators.
+                    Configure master discount policies, customer tiers, and fulfillment warehouses.
                   </p>
                 </div>
               </RoleGuard>
             }
           />
-
-          {/* Root Redirect */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Route>
 

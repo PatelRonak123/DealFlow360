@@ -41,7 +41,7 @@ export class QuotationsService {
     return (
       user.roles.includes(Roles.ADMIN) ||
       user.roles.includes(Roles.SALES_MANAGER) ||
-      user.roles.includes(Roles.FINANCE_OPERATIONS)
+      user.roles.includes(Roles.FINANCE)
     );
   }
 

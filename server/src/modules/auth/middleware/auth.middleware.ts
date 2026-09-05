@@ -30,16 +30,25 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   }
 }
 
+function normalizeRoleName(r: string): string {
+  return r.trim().toUpperCase().replace(/[\s-]/g, '_');
+}
+
 export function requireRole(...allowedRoles: string[]) {
+  const normalizedAllowed = allowedRoles.map(normalizeRoleName);
+
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       return next(new UnauthorizedError('Authentication required'));
     }
 
-    // ADMIN bypass or role match
+    const userRoles = req.user.roles.map(normalizeRoleName);
+    const userRoleSet = new Set<string>(userRoles);
+
+    // Role match or Admin override
     const hasRole =
-      req.user.roles.includes(Roles.ADMIN) ||
-      req.user.roles.some((role) => allowedRoles.includes(role));
+      userRoleSet.has(Roles.ADMIN) ||
+      normalizedAllowed.some((role) => userRoleSet.has(role));
 
     if (!hasRole) {
       return next(new ForbiddenError('Access denied: insufficient role privileges'));
@@ -56,7 +65,7 @@ export function requirePermission(...requiredPermissions: string[]) {
     }
 
     // ADMIN bypass or all required permissions match
-    const isAdmin = req.user.roles.includes(Roles.ADMIN);
+    const isAdmin = req.user.roles.map(normalizeRoleName).includes(Roles.ADMIN);
     const hasAllPermissions =
       isAdmin ||
       requiredPermissions.every((perm) => req.user!.permissions.includes(perm));
@@ -68,3 +77,4 @@ export function requirePermission(...requiredPermissions: string[]) {
     next();
   };
 }
+

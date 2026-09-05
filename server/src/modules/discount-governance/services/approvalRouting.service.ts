@@ -239,8 +239,8 @@ export class ApprovalRoutingService {
         throw new ForbiddenError('Only Sales Managers or Administrators can approve Manager-level approvals');
       }
     } else if (approval.approvalLevel === ApprovalLevels.FINANCE) {
-      if (userRole !== Roles.ADMIN && userRole !== Roles.FINANCE_OPERATIONS) {
-        throw new ForbiddenError('Only Finance & Operations officers or Administrators can approve Finance-level approvals');
+      if (userRole !== Roles.ADMIN && userRole !== Roles.FINANCE) {
+        throw new ForbiddenError('Only Finance officers or Administrators can approve Finance-level approvals');
       }
     }
 
@@ -329,8 +329,8 @@ export class ApprovalRoutingService {
         throw new ForbiddenError('Only Sales Managers or Administrators can reject Manager-level approvals');
       }
     } else if (approval.approvalLevel === ApprovalLevels.FINANCE) {
-      if (userRole !== Roles.ADMIN && userRole !== Roles.FINANCE_OPERATIONS) {
-        throw new ForbiddenError('Only Finance & Operations officers or Administrators can reject Finance-level approvals');
+      if (userRole !== Roles.ADMIN && userRole !== Roles.FINANCE) {
+        throw new ForbiddenError('Only Finance officers or Administrators can reject Finance-level approvals');
       }
     }
 
@@ -401,3 +401,5 @@ export class ApprovalRoutingService {
     }
   }
 }
+
+export const approvalRoutingService = new ApprovalRoutingService();

@@ -1,10 +1,11 @@
 import React from 'react';
-import { UserRole } from '@/types/Auth';
+import { UserRole, AuthUser } from '@/types/Auth';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { hasAnyRole } from '@/lib/accessControl';
 import { AccessDenied } from './AccessDenied';
 
 export interface RoleGuardProps {
-  allowedRoles: UserRole[];
+  allowedRoles: (UserRole | string)[];
   moduleName?: string;
   children: React.ReactNode;
 }
@@ -16,9 +17,12 @@ export const RoleGuard: React.FC<RoleGuardProps> = ({
 }) => {
   const { user } = useAuth();
 
-  if (!allowedRoles.includes(user.role)) {
-    return <AccessDenied requiredRoles={allowedRoles} moduleName={moduleName} />;
+  const isAllowed = hasAnyRole(user as unknown as AuthUser, allowedRoles);
+
+  if (!isAllowed) {
+    return <AccessDenied requiredRoles={allowedRoles as UserRole[]} moduleName={moduleName} />;
   }
 
   return <>{children}</>;
 };
+

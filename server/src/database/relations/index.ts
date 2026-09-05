@@ -17,12 +17,23 @@ import { quotations } from '../schema/quotations.js';
 import { quotationItems } from '../schema/quotationItems.js';
 import { quotationApprovals } from '../schema/quotationApprovals.js';
 import { quotationDiscountEvaluations } from '../schema/quotationDiscountEvaluations.js';
+import { recommendationRules } from '../schema/recommendationRules.js';
+import { recommendationEvents } from '../schema/recommendationEvents.js';
+import { warehouses } from '../schema/warehouses.js';
+import { warehouseInventory } from '../schema/warehouseInventory.js';
+import { inventoryTransactions } from '../schema/inventoryTransactions.js';
+import { fulfillments } from '../schema/fulfillments.js';
+import { fulfillmentAllocations } from '../schema/fulfillmentAllocations.js';
+import { backorders } from '../schema/backorders.js';
 
 export const usersRelations = relations(users, ({ many }) => ({
   userRoles: many(userRoles),
   refreshTokens: many(refreshTokens),
   quotations: many(quotations),
   decidedApprovals: many(quotationApprovals),
+  recommendationEvents: many(recommendationEvents),
+  fulfillments: many(fulfillments),
+  inventoryTransactions: many(inventoryTransactions),
 }));
 
 export const rolesRelations = relations(roles, ({ many }) => ({
@@ -108,6 +119,13 @@ export const productsRelations = relations(products, ({ one, many }) => ({
   }),
   priceListItems: many(priceListItems),
   quotationItems: many(quotationItems),
+  sourceRules: many(recommendationRules, { relationName: 'sourceProduct' }),
+  recommendedRules: many(recommendationRules, { relationName: 'recommendedProduct' }),
+  recommendationEvents: many(recommendationEvents),
+  warehouseInventory: many(warehouseInventory),
+  inventoryTransactions: many(inventoryTransactions),
+  fulfillmentAllocations: many(fulfillmentAllocations),
+  backorders: many(backorders),
 }));
 
 export const priceListsRelations = relations(priceLists, ({ many }) => ({
@@ -142,6 +160,8 @@ export const quotationsRelations = relations(quotations, ({ one, many }) => ({
   items: many(quotationItems),
   approvals: many(quotationApprovals),
   discountEvaluations: many(quotationDiscountEvaluations),
+  recommendationEvents: many(recommendationEvents),
+  fulfillments: many(fulfillments),
 }));
 
 export const quotationItemsRelations = relations(quotationItems, ({ one, many }) => ({
@@ -180,3 +200,112 @@ export const quotationDiscountEvaluationsRelations = relations(
     }),
   })
 );
+
+export const recommendationRulesRelations = relations(recommendationRules, ({ one, many }) => ({
+  sourceProduct: one(products, {
+    fields: [recommendationRules.sourceProductId],
+    references: [products.id],
+    relationName: 'sourceProduct',
+  }),
+  recommendedProduct: one(products, {
+    fields: [recommendationRules.recommendedProductId],
+    references: [products.id],
+    relationName: 'recommendedProduct',
+  }),
+  events: many(recommendationEvents),
+}));
+
+export const recommendationEventsRelations = relations(recommendationEvents, ({ one }) => ({
+  quotation: one(quotations, {
+    fields: [recommendationEvents.quotationId],
+    references: [quotations.id],
+  }),
+  recommendationRule: one(recommendationRules, {
+    fields: [recommendationEvents.recommendationRuleId],
+    references: [recommendationRules.id],
+  }),
+  recommendedProduct: one(products, {
+    fields: [recommendationEvents.recommendedProductId],
+    references: [products.id],
+  }),
+  createdByUser: one(users, {
+    fields: [recommendationEvents.createdById],
+    references: [users.id],
+  }),
+}));
+
+export const warehousesRelations = relations(warehouses, ({ many }) => ({
+  inventory: many(warehouseInventory),
+  transactions: many(inventoryTransactions),
+  fulfillmentAllocations: many(fulfillmentAllocations),
+}));
+
+export const warehouseInventoryRelations = relations(warehouseInventory, ({ one, many }) => ({
+  warehouse: one(warehouses, {
+    fields: [warehouseInventory.warehouseId],
+    references: [warehouses.id],
+  }),
+  product: one(products, {
+    fields: [warehouseInventory.productId],
+    references: [products.id],
+  }),
+  transactions: many(inventoryTransactions),
+}));
+
+export const inventoryTransactionsRelations = relations(inventoryTransactions, ({ one }) => ({
+  inventory: one(warehouseInventory, {
+    fields: [inventoryTransactions.inventoryId],
+    references: [warehouseInventory.id],
+  }),
+  warehouse: one(warehouses, {
+    fields: [inventoryTransactions.warehouseId],
+    references: [warehouses.id],
+  }),
+  product: one(products, {
+    fields: [inventoryTransactions.productId],
+    references: [products.id],
+  }),
+  createdByUser: one(users, {
+    fields: [inventoryTransactions.createdById],
+    references: [users.id],
+  }),
+}));
+
+export const fulfillmentsRelations = relations(fulfillments, ({ one, many }) => ({
+  quotation: one(quotations, {
+    fields: [fulfillments.quotationId],
+    references: [quotations.id],
+  }),
+  createdByUser: one(users, {
+    fields: [fulfillments.createdById],
+    references: [users.id],
+  }),
+  allocations: many(fulfillmentAllocations),
+  backorders: many(backorders),
+}));
+
+export const fulfillmentAllocationsRelations = relations(fulfillmentAllocations, ({ one }) => ({
+  fulfillment: one(fulfillments, {
+    fields: [fulfillmentAllocations.fulfillmentId],
+    references: [fulfillments.id],
+  }),
+  warehouse: one(warehouses, {
+    fields: [fulfillmentAllocations.warehouseId],
+    references: [warehouses.id],
+  }),
+  product: one(products, {
+    fields: [fulfillmentAllocations.productId],
+    references: [products.id],
+  }),
+}));
+
+export const backordersRelations = relations(backorders, ({ one }) => ({
+  fulfillment: one(fulfillments, {
+    fields: [backorders.fulfillmentId],
+    references: [fulfillments.id],
+  }),
+  product: one(products, {
+    fields: [backorders.productId],
+    references: [products.id],
+  }),
+}));

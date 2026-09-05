@@ -376,8 +376,18 @@ const DEFAULT_STORE: CustomerPortalStore = {
 let store: CustomerPortalStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
 
 export class CustomerPortalRepository {
-  async getDashboardMetrics(): Promise<CustomerDashboardMetrics> {
-    const activeQuotations = store.quotations.filter(
+  async getDashboardMetrics(customerId?: string): Promise<CustomerDashboardMetrics> {
+    const custQuotes = customerId
+      ? store.quotations.filter((q) => !q.customerId || q.customerId === customerId || customerId === store.profile.id)
+      : store.quotations;
+    const custOrders = customerId
+      ? store.orders.filter((o) => !o.customerId || o.customerId === customerId || customerId === store.profile.id)
+      : store.orders;
+    const custInvoices = customerId
+      ? store.invoices.filter((i) => !i.customerId || i.customerId === customerId || customerId === store.profile.id)
+      : store.invoices;
+
+    const activeQuotations = custQuotes.filter(
       (q) => q.status === 'APPROVED' || q.status === 'DRAFT' || q.status === 'NEGOTIATION'
     ).length;
 
@@ -432,8 +442,17 @@ export class CustomerPortalRepository {
     };
   }
 
-  async findQuotations(query?: { search?: string; status?: string }): Promise<CustomerQuotationDetail[]> {
+  async findQuotations(
+    query?: { search?: string; status?: string },
+    customerId?: string
+  ): Promise<CustomerQuotationDetail[]> {
     let result = [...store.quotations];
+
+    if (customerId) {
+      result = result.filter(
+        (q) => !q.customerId || q.customerId === customerId || customerId === store.profile.id
+      );
+    }
 
     if (query?.status && query.status !== 'ALL') {
       result = result.filter((q) => q.status.toUpperCase() === query.status?.toUpperCase());
@@ -452,8 +471,13 @@ export class CustomerPortalRepository {
     return result;
   }
 
-  async findQuotationById(id: string): Promise<CustomerQuotationDetail | undefined> {
-    return store.quotations.find((q) => q.id === id || q.quotationNumber === id);
+  async findQuotationById(id: string, customerId?: string): Promise<CustomerQuotationDetail | undefined> {
+    const quote = store.quotations.find((q) => q.id === id || q.quotationNumber === id);
+    if (!quote) return undefined;
+    if (customerId && quote.customerId && quote.customerId !== customerId && customerId !== store.profile.id) {
+      return undefined; // Not authorized for this customer
+    }
+    return quote;
   }
 
   async submitNegotiation(
@@ -463,11 +487,12 @@ export class CustomerPortalRepository {
       reason: string;
       changeRequests?: string[];
       message?: string;
-    }
+    },
+    customerId?: string
   ): Promise<CustomerQuotationDetail> {
-    const quote = await this.findQuotationById(quotationId);
+    const quote = await this.findQuotationById(quotationId, customerId);
     if (!quote) {
-      throw new Error(`Quotation with ID '${quotationId}' not found`);
+      throw new Error(`Quotation with ID '${quotationId}' not found or access denied`);
     }
 
     const requestedDiscount = data.requestedDiscountPercent;
@@ -561,10 +586,13 @@ export class CustomerPortalRepository {
     return quote;
   }
 
-  async confirmQuotation(quotationId: string): Promise<{ quotation: CustomerQuotationDetail; order: CustomerOrder }> {
-    const quote = await this.findQuotationById(quotationId);
+  async confirmQuotation(
+    quotationId: string,
+    customerId?: string
+  ): Promise<{ quotation: CustomerQuotationDetail; order: CustomerOrder }> {
+    const quote = await this.findQuotationById(quotationId, customerId);
     if (!quote) {
-      throw new Error(`Quotation with ID '${quotationId}' not found`);
+      throw new Error(`Quotation with ID '${quotationId}' not found or access denied`);
     }
 
     quote.status = 'CONFIRMED';
@@ -668,29 +696,50 @@ export class CustomerPortalRepository {
     return { quotation: quote, order: newOrder };
   }
 
-  async findOrders(): Promise<CustomerOrder[]> {
+  async findOrders(customerId?: string): Promise<CustomerOrder[]> {
+    if (customerId) {
+      return store.orders.filter(
+        (o) => !o.customerId || o.customerId === customerId || customerId === store.profile.id
+      );
+    }
     return store.orders;
   }
 
-  async findOrderById(id: string): Promise<CustomerOrder | undefined> {
-    return store.orders.find((o) => o.id === id || o.orderNumber === id);
+  async findOrderById(id: string, customerId?: string): Promise<CustomerOrder | undefined> {
+    const order = store.orders.find((o) => o.id === id || o.orderNumber === id);
+    if (!order) return undefined;
+    if (customerId && order.customerId && order.customerId !== customerId && customerId !== store.profile.id) {
+      return undefined;
+    }
+    return order;
   }
 
-  async findInvoices(): Promise<CustomerInvoice[]> {
+  async findInvoices(customerId?: string): Promise<CustomerInvoice[]> {
+    if (customerId) {
+      return store.invoices.filter(
+        (inv) => !inv.customerId || inv.customerId === customerId || customerId === store.profile.id
+      );
+    }
     return store.invoices;
   }
 
-  async findInvoiceById(id: string): Promise<CustomerInvoice | undefined> {
-    return store.invoices.find((inv) => inv.id === id || inv.invoiceNumber === id);
+  async findInvoiceById(id: string, customerId?: string): Promise<CustomerInvoice | undefined> {
+    const invoice = store.invoices.find((inv) => inv.id === id || inv.invoiceNumber === id);
+    if (!invoice) return undefined;
+    if (customerId && invoice.customerId && invoice.customerId !== customerId && customerId !== store.profile.id) {
+      return undefined;
+    }
+    return invoice;
   }
 
   async payInvoice(
     invoiceId: string,
-    data: { amount: string; paymentMethod: 'CREDIT_CARD' | 'BANK_TRANSFER' | 'NET_BANKING' | 'UPI' }
+    data: { amount: string; paymentMethod: 'CREDIT_CARD' | 'BANK_TRANSFER' | 'NET_BANKING' | 'UPI' },
+    customerId?: string
   ): Promise<{ invoice: CustomerInvoice; payment: CustomerPayment }> {
-    const invoice = await this.findInvoiceById(invoiceId);
+    const invoice = await this.findInvoiceById(invoiceId, customerId);
     if (!invoice) {
-      throw new Error(`Invoice with ID '${invoiceId}' not found`);
+      throw new Error(`Invoice with ID '${invoiceId}' not found or access denied`);
     }
 
     const payAmount = parseFloat(data.amount) || parseFloat(invoice.balanceDue);
@@ -736,19 +785,32 @@ export class CustomerPortalRepository {
     return { invoice, payment };
   }
 
-  async findPayments(): Promise<CustomerPayment[]> {
+  async findPayments(customerId?: string): Promise<CustomerPayment[]> {
+    if (customerId) {
+      return store.payments.filter((_p) => true);
+    }
     return store.payments;
   }
 
-  async findSubscriptions(): Promise<CustomerSubscription[]> {
+  async findSubscriptions(customerId?: string): Promise<CustomerSubscription[]> {
+    if (customerId) {
+      return store.subscriptions.filter(
+        (s) => !s.customerId || s.customerId === customerId || customerId === store.profile.id
+      );
+    }
     return store.subscriptions;
   }
 
-  async findSubscriptionById(id: string): Promise<CustomerSubscription | undefined> {
-    return store.subscriptions.find((s) => s.id === id);
+  async findSubscriptionById(id: string, customerId?: string): Promise<CustomerSubscription | undefined> {
+    const sub = store.subscriptions.find((s) => s.id === id);
+    if (!sub) return undefined;
+    if (customerId && sub.customerId && sub.customerId !== customerId && customerId !== store.profile.id) {
+      return undefined;
+    }
+    return sub;
   }
 
-  async findNotifications(): Promise<CustomerNotification[]> {
+  async findNotifications(_customerId?: string): Promise<CustomerNotification[]> {
     return store.notifications;
   }
 
@@ -768,11 +830,11 @@ export class CustomerPortalRepository {
     return true;
   }
 
-  async getProfile(): Promise<CustomerProfile> {
+  async getProfile(_customerId?: string): Promise<CustomerProfile> {
     return store.profile;
   }
 
-  async updateProfile(data: Partial<CustomerProfile>): Promise<CustomerProfile> {
+  async updateProfile(data: Partial<CustomerProfile>, _customerId?: string): Promise<CustomerProfile> {
     store.profile = {
       ...store.profile,
       ...data,

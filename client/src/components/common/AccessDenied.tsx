@@ -4,9 +4,10 @@ import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { UserRole } from '@/types/Auth';
+import { normalizeRole, getRoleTitle, getDashboardPathForRole, ROLES } from '@/lib/accessControl';
 
 export interface AccessDeniedProps {
-  requiredRoles?: UserRole[];
+  requiredRoles?: (UserRole | string)[];
   moduleName?: string;
 }
 
@@ -17,13 +18,8 @@ export const AccessDenied: React.FC<AccessDeniedProps> = ({
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const roleNameMap: Record<UserRole, string> = {
-    sales_rep: 'Sales Representative',
-    sales_manager: 'Sales Manager',
-    finance_ops: 'Finance & Operations',
-    customer: 'Customer Portal',
-    admin: 'System Administrator',
-  };
+  const currentActiveRole = normalizeRole(user?.activeRole || user?.role || ROLES.SALES_REP);
+  const homeDashboard = getDashboardPathForRole(currentActiveRole);
 
   return (
     <div className="flex min-h-[65vh] flex-col items-center justify-center p-6 text-center">
@@ -41,13 +37,13 @@ export const AccessDenied: React.FC<AccessDeniedProps> = ({
       </h1>
 
       <p className="mt-3 max-w-md text-sm text-[#59657d] leading-relaxed">
-        You are currently logged in as a <strong className="text-[#17213a]">{roleNameMap[user.role]}</strong>.
+        You are currently logged in as <strong className="text-[#17213a]">{getRoleTitle(currentActiveRole)}</strong> ({currentActiveRole.replace(/_/g, ' ')} mode).
         Access to <strong className="text-[#17213a]">{moduleName}</strong> is restricted by DealFlow360 governance policies.
       </p>
 
       {requiredRoles.length > 0 && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-600">
-          Authorized roles: <span className="font-semibold text-gray-900">{requiredRoles.map((r) => roleNameMap[r]).join(', ')}</span>
+          Authorized roles: <span className="font-semibold text-gray-900">{requiredRoles.map((r) => normalizeRole(r).replace(/_/g, ' ')).join(', ')}</span>
         </div>
       )}
 
@@ -55,7 +51,7 @@ export const AccessDenied: React.FC<AccessDeniedProps> = ({
         <Button
           variant="primary"
           leftIcon={<ArrowLeft className="h-4 w-4" />}
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate(homeDashboard)}
         >
           Return to My Dashboard
         </Button>
@@ -63,3 +59,4 @@ export const AccessDenied: React.FC<AccessDeniedProps> = ({
     </div>
   );
 };
+

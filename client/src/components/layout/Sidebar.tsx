@@ -2,23 +2,12 @@ import { NavLink } from 'react-router-dom';
 import { BarChart3 } from 'lucide-react';
 import { getNavForRole, NavItem } from '@/config/Navigation';
 import { useAuth } from '@/features/auth';
-import { UserRole } from '@/types/Auth';
+import { normalizeRole, getRoleTitle, ROLES } from '@/lib/accessControl';
 
 export function Sidebar() {
   const { user } = useAuth();
-  const rawRole = user?.roles?.[0]?.toLowerCase() || user?.role?.toLowerCase();
-  const role: UserRole =
-    rawRole === 'sales_representative' || rawRole === 'sales_rep'
-      ? 'sales_rep'
-      : rawRole === 'sales_manager'
-        ? 'sales_manager'
-        : rawRole === 'finance_ops' || rawRole === 'finance'
-          ? 'finance_ops'
-          : rawRole === 'admin'
-            ? 'admin'
-            : (rawRole as UserRole) || 'customer';
-
-  const sections = getNavForRole(role);
+  const activeRole = normalizeRole(user?.activeRole || user?.role || ROLES.SALES_REP);
+  const sections = getNavForRole(activeRole);
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-[#e7ebf7] bg-white px-4 py-5 select-none">
@@ -53,7 +42,10 @@ export function Sidebar() {
         <div className="rounded-xl bg-[#f7f9fe] border border-[#e4ecfb] p-3 text-xs">
           <p className="font-bold text-[#17213a]">Workspace Scope</p>
           <p className="text-[#64748b] mt-0.5 capitalize">
-            {(user?.role || role).replace('_', ' ')} Mode
+            {activeRole.replace(/_/g, ' ')} Mode
+          </p>
+          <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+            {getRoleTitle(activeRole)}
           </p>
         </div>
       </div>

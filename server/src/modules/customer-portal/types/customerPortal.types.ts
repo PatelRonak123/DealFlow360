@@ -160,6 +160,7 @@ export interface CustomerPayment {
 
 export interface CustomerSubscription {
   id: string;
+  customerId?: string;
   planName: string;
   subscriptionNumber: string;
   status: 'ACTIVE' | 'PENDING_RENEWAL' | 'PAST_DUE' | 'CANCELLED';
