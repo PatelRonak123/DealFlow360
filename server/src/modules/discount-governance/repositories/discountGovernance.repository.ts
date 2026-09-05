@@ -18,6 +18,9 @@ export interface PendingApprovalListItem extends QuotationApproval {
     id: string;
     quotationNumber: string;
     totalAmount: string;
+    subtotal?: string;
+    discountAmount?: string;
+    status?: string;
     currency: string;
     customerId: string;
     createdById: string;
@@ -196,6 +199,9 @@ export class DiscountGovernanceRepository {
         id: row.quotation.id,
         quotationNumber: row.quotation.quotationNumber,
         totalAmount: row.quotation.totalAmount,
+        subtotal: row.quotation.subtotal,
+        discountAmount: row.quotation.discountAmount,
+        status: row.quotation.status,
         currency: row.quotation.currency,
         customerId: row.quotation.customerId,
         createdById: row.quotation.createdBy,
