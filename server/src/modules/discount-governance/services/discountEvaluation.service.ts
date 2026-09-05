@@ -1,4 +1,4 @@
-import { db, Database } from '../../../database/db.js';
+import { db, Database, DbClient } from '../../../database/db.js';
 import {
   quotations,
   quotationItems,
@@ -78,7 +78,7 @@ export class DiscountEvaluationService {
    */
   public async evaluateQuotation(
     quotationId: string,
-    trx?: any
+    trx?: DbClient
   ): Promise<QuotationDiscountEvaluationResult> {
     const client = trx || this.db;
 

@@ -1,4 +1,4 @@
-import { db, Database } from '../../../database/db.js';
+import { db, Database, DbClient } from '../../../database/db.js';
 import {
   quotationApprovals,
   quotationDiscountEvaluations,
@@ -48,7 +48,7 @@ export class DiscountGovernanceRepository {
 
   async getDiscountEvaluationsByQuotationId(
     quotationId: string,
-    trx?: any
+    trx?: DbClient
   ): Promise<QuotationDiscountEvaluation[]> {
     const client = trx || this.db;
     return client
@@ -60,7 +60,7 @@ export class DiscountGovernanceRepository {
 
   async deleteDiscountEvaluationsByQuotationId(
     quotationId: string,
-    trx?: any
+    trx?: DbClient
   ): Promise<void> {
     const client = trx || this.db;
     await client
@@ -70,7 +70,7 @@ export class DiscountGovernanceRepository {
 
   async createDiscountEvaluations(
     evaluations: NewQuotationDiscountEvaluation[],
-    trx?: any
+    trx?: DbClient
   ): Promise<QuotationDiscountEvaluation[]> {
     if (evaluations.length === 0) return [];
     const client = trx || this.db;
@@ -79,7 +79,7 @@ export class DiscountGovernanceRepository {
 
   async getApprovalsByQuotationId(
     quotationId: string,
-    trx?: any
+    trx?: DbClient
   ): Promise<QuotationApproval[]> {
     const client = trx || this.db;
     return client
@@ -91,7 +91,7 @@ export class DiscountGovernanceRepository {
 
   async getApprovalById(
     approvalId: string,
-    trx?: any
+    trx?: DbClient
   ): Promise<QuotationApproval | null> {
     const client = trx || this.db;
     const [result] = await client
@@ -103,7 +103,7 @@ export class DiscountGovernanceRepository {
 
   async createApprovals(
     approvalsData: NewQuotationApproval[],
-    trx?: any
+    trx?: DbClient
   ): Promise<QuotationApproval[]> {
     if (approvalsData.length === 0) return [];
     const client = trx || this.db;
@@ -113,7 +113,7 @@ export class DiscountGovernanceRepository {
   async updateApproval(
     approvalId: string,
     updateData: Partial<NewQuotationApproval>,
-    trx?: any
+    trx?: DbClient
   ): Promise<QuotationApproval | null> {
     const client = trx || this.db;
     const [updated] = await client
@@ -129,7 +129,7 @@ export class DiscountGovernanceRepository {
 
   async invalidatePendingApprovalsByQuotationId(
     quotationId: string,
-    trx?: any
+    trx?: DbClient
   ): Promise<void> {
     const client = trx || this.db;
     await client

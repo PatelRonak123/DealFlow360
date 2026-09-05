@@ -1,4 +1,4 @@
-import { db, Database } from '../../../database/db.js';
+import { db, Database, DbClient } from '../../../database/db.js';
 import {
   quotations,
   quotationItems,
@@ -371,7 +371,7 @@ export class ApprovalRoutingService {
    */
   public async invalidateWorkflowOnQuotationMutation(
     quotationId: string,
-    trx?: any
+    trx?: DbClient
   ): Promise<void> {
     const client = trx || this.db;
     const [quotation] = await client

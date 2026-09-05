@@ -1731,15 +1731,320 @@ The Quotations module manages B2B sales quotes, monotonic sequence-based quote n
 
 ---
 
-## 13. RBAC Roles & Permissions Matrix
+## 13. Phase 6: Discount Governance & Approval Engine Endpoints
+
+Phase 6 implements automated discount evaluation against tier and category discount ceilings, deterministic blended risk scoring, multi-tier approvals (Manager + Finance), quotation submission, and workflow invalidation on commercial line mutations.
+
+### 13.1 Submit Quotation for Approval
+* **Endpoint**: `POST /api/v1/quotations/:id/submit`
+* **Access**: Protected (`quotation:submit`)
+* **Request Body**:
+```json
+{
+  "notes": "End of quarter enterprise contract discount request"
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation submitted successfully",
+  "data": {
+    "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "quotationNumber": "QT-000001",
+    "status": "PENDING_MANAGER_APPROVAL",
+    "riskScore": 12.0,
+    "totalViolations": 1,
+    "approvalRequired": true,
+    "approvalRoute": "MANAGER",
+    "evaluation": {
+      "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "quotationNumber": "QT-000001",
+      "customerId": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+      "customerName": "Acme Global Industries",
+      "customerTierId": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
+      "customerTierName": "Gold Tier",
+      "subtotalAmount": 100000,
+      "totalDiscountAmount": 22000,
+      "totalAmount": 78000,
+      "totalViolations": 1,
+      "riskScore": 12.0,
+      "weightedExcessRisk": 12.0,
+      "approvalRequired": true,
+      "approvalRoute": "MANAGER",
+      "requiredApprovalLevels": ["MANAGER"],
+      "lineEvaluations": [
+        {
+          "quotationItemId": "99e1b5f0-629a-4c22-9909-08a8a4b08b99",
+          "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+          "productName": "Enterprise Rack Server",
+          "sku": "SKU-SRV-01",
+          "categoryId": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+          "categoryName": "Hardware Appliances",
+          "appliedDiscount": 22.0,
+          "customerTierLimit": 15.0,
+          "categoryLimit": 10.0,
+          "effectiveAllowedDiscount": 10.0,
+          "excessDiscount": 12.0,
+          "isViolation": true,
+          "riskContribution": 1200000.0,
+          "grossAmount": 100000.0,
+          "discountAmount": 22000.0,
+          "netAmount": 78000.0
+        }
+      ]
+    },
+    "approvals": [
+      {
+        "id": "bb11b5f0-629a-4c22-9909-08a8a4b08b01",
+        "approvalLevel": "MANAGER",
+        "status": "PENDING",
+        "sequence": 1
+      }
+    ]
+  },
+  "timestamp": "2026-09-05T08:45:00.000Z"
+}
+```
+
+### 13.2 Preview Discount Evaluation
+* **Endpoint**: `POST /api/v1/quotations/:id/evaluate-discount`
+* **Access**: Protected (`quotation:evaluate`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Discount evaluation calculated successfully",
+  "data": {
+    "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+    "quotationNumber": "QT-000001",
+    "customerId": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+    "customerName": "Acme Global Industries",
+    "customerTierId": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
+    "customerTierName": "Gold Tier",
+    "subtotalAmount": 100000,
+    "totalDiscountAmount": 22000,
+    "totalAmount": 78000,
+    "totalViolations": 1,
+    "riskScore": 12.0,
+    "weightedExcessRisk": 12.0,
+    "approvalRequired": true,
+    "approvalRoute": "MANAGER",
+    "requiredApprovalLevels": ["MANAGER"],
+    "lineEvaluations": [
+      {
+        "quotationItemId": "99e1b5f0-629a-4c22-9909-08a8a4b08b99",
+        "productId": "55e1b5f0-629a-4c22-9909-08a8a4b08b33",
+        "productName": "Enterprise Rack Server",
+        "sku": "SKU-SRV-01",
+        "categoryId": "33e1b5f0-629a-4c22-9909-08a8a4b08b11",
+        "categoryName": "Hardware Appliances",
+        "appliedDiscount": 22.0,
+        "customerTierLimit": 15.0,
+        "categoryLimit": 10.0,
+        "effectiveAllowedDiscount": 10.0,
+        "excessDiscount": 12.0,
+        "isViolation": true,
+        "riskContribution": 1200000.0,
+        "grossAmount": 100000.0,
+        "discountAmount": 22000.0,
+        "netAmount": 78000.0
+      }
+    ]
+  },
+  "timestamp": "2026-09-05T08:45:00.000Z"
+}
+```
+
+### 13.3 Get Quotation Discount Evaluation Audit
+* **Endpoint**: `GET /api/v1/quotations/:id/discount-evaluation`
+* **Access**: Protected (`quotation:read`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation discount evaluation records retrieved successfully",
+  "data": [
+    {
+      "id": "cc11b5f0-629a-4c22-9909-08a8a4b08b02",
+      "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "quotationItemId": "99e1b5f0-629a-4c22-9909-08a8a4b08b99",
+      "appliedDiscount": "22.00",
+      "customerTierLimit": "15.00",
+      "categoryLimit": "10.00",
+      "effectiveAllowedDiscount": "10.00",
+      "excessDiscount": "12.00",
+      "isViolation": true,
+      "riskContribution": "1200000.00",
+      "createdAt": "2026-09-05T08:45:00.000Z"
+    }
+  ],
+  "timestamp": "2026-09-05T08:45:00.000Z"
+}
+```
+
+### 13.4 Get Quotation Approval History
+* **Endpoint**: `GET /api/v1/quotations/:id/approvals`
+* **Access**: Protected (`quotation:read`)
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Quotation approvals retrieved successfully",
+  "data": [
+    {
+      "id": "bb11b5f0-629a-4c22-9909-08a8a4b08b01",
+      "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "approvalLevel": "MANAGER",
+      "status": "APPROVED",
+      "sequence": 1,
+      "requestedAt": "2026-09-05T08:45:00.000Z",
+      "decidedAt": "2026-09-05T08:50:00.000Z",
+      "decidedById": "22222222-2222-2222-2222-222222222222",
+      "comments": "Approved as strategic account discount",
+      "createdAt": "2026-09-05T08:45:00.000Z",
+      "updatedAt": "2026-09-05T08:50:00.000Z"
+    }
+  ],
+  "timestamp": "2026-09-05T08:50:00.000Z"
+}
+```
+
+---
+
+### 13.5 List Pending Approvals
+* **Endpoint**: `GET /api/v1/approvals/pending`
+* **Access**: Protected (`approval:read`)
+* **Role Filtering**: Sales Managers automatically see only `MANAGER` level approvals; Finance Officers see `FINANCE` level approvals; Admins see all levels.
+* **Query Parameters**:
+  * `page` (optional, default: `1`): Page number
+  * `limit` (optional, default: `20`): Page size
+  * `status` (optional, default: `PENDING`): Filter by approval status
+  * `approvalLevel` (optional, `MANAGER` | `FINANCE`): Filter by level
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Pending approvals retrieved successfully",
+  "data": [
+    {
+      "id": "bb11b5f0-629a-4c22-9909-08a8a4b08b01",
+      "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "approvalLevel": "MANAGER",
+      "status": "PENDING",
+      "sequence": 1,
+      "requestedAt": "2026-09-05T08:45:00.000Z",
+      "decidedAt": null,
+      "decidedById": null,
+      "comments": "End of quarter enterprise contract discount request",
+      "quotation": {
+        "id": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+        "quotationNumber": "QT-000001",
+        "totalAmount": "78000.00",
+        "currency": "INR",
+        "customerId": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+        "createdById": "11111111-1111-1111-1111-111111111111",
+        "customer": {
+          "id": "88e1b5f0-629a-4c22-9909-08a8a4b08b55",
+          "companyName": "Acme Global Industries",
+          "email": "alice@acme.com"
+        },
+        "createdBy": {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "name": "Sales Rep Alice",
+          "email": "rep.alice@dealflow360.com"
+        }
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "totalPages": 1
+  },
+  "timestamp": "2026-09-05T08:45:00.000Z"
+}
+```
+
+### 13.6 Approve Approval Step
+* **Endpoint**: `POST /api/v1/approvals/:id/approve`
+* **Access**: Protected (`approval:approve`)
+* **Request Body**:
+```json
+{
+  "comments": "Approved based on strategic revenue impact"
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Approval step approved successfully",
+  "data": {
+    "approval": {
+      "id": "bb11b5f0-629a-4c22-9909-08a8a4b08b01",
+      "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "approvalLevel": "MANAGER",
+      "status": "APPROVED",
+      "sequence": 1,
+      "requestedAt": "2026-09-05T08:45:00.000Z",
+      "decidedAt": "2026-09-05T08:50:00.000Z",
+      "decidedById": "22222222-2222-2222-2222-222222222222",
+      "comments": "Approved based on strategic revenue impact",
+      "updatedAt": "2026-09-05T08:50:00.000Z"
+    },
+    "quotationStatus": "APPROVED",
+    "remainingApprovalsCount": 0
+  },
+  "timestamp": "2026-09-05T08:50:00.000Z"
+}
+```
+
+### 13.7 Reject Approval Step
+* **Endpoint**: `POST /api/v1/approvals/:id/reject`
+* **Access**: Protected (`approval:reject`)
+* **Request Body**:
+```json
+{
+  "comments": "Requested discount exceeds acceptable product gross margin"
+}
+```
+* **Success Response (`200 OK`)**:
+```json
+{
+  "success": true,
+  "message": "Approval step rejected successfully",
+  "data": {
+    "approval": {
+      "id": "bb11b5f0-629a-4c22-9909-08a8a4b08b01",
+      "quotationId": "77e1b5f0-629a-4c22-9909-08a8a4b08b77",
+      "approvalLevel": "MANAGER",
+      "status": "REJECTED",
+      "sequence": 1,
+      "requestedAt": "2026-09-05T08:45:00.000Z",
+      "decidedAt": "2026-09-05T08:50:00.000Z",
+      "decidedById": "22222222-2222-2222-2222-222222222222",
+      "comments": "Requested discount exceeds acceptable product gross margin",
+      "updatedAt": "2026-09-05T08:50:00.000Z"
+    },
+    "quotationStatus": "REJECTED"
+  },
+  "timestamp": "2026-09-05T08:50:00.000Z"
+}
+```
+
+---
+
+## 14. RBAC Roles & Permissions Matrix
 
 ### Roles
 | Role | Code | Description |
 |---|---|---|
 | Administrator | `ADMIN` | Full administrative bypass and access across all modules |
-| Sales Representative | `SALES_REP` | Create/edit quotations, view catalog, price lists, discount rules, inventory |
+| Sales Representative | `SALES_REP` | Create/edit/submit quotations, view catalog, price lists, discount rules, inventory |
 | Sales Manager | `SALES_MANAGER` | Quote approvals, discount governance, manage catalog, price lists, discount rules |
-| Finance & Operations | `FINANCE_OPERATIONS` | Billing, payment processing, manage pricing rules, price lists, discount overrides |
+| Finance & Operations | `FINANCE_OPERATIONS` | Billing, payment processing, finance discount approvals, price lists, discount overrides |
 | Customer | `CUSTOMER` | Customer portal viewing of quotes and invoices |
 
 ### Core Permissions
@@ -1762,9 +2067,14 @@ The Quotations module manages B2B sales quotes, monotonic sequence-based quote n
 | `quotation:create` | Create quote drafts | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
 | `quotation:read` | Read quotation details | `ADMIN`, `SALES_REP`, `SALES_MANAGER`, `FINANCE_OPERATIONS`, `CUSTOMER` |
 | `quotation:update` | Update quotation lines and terms | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
+| `quotation:submit` | Submit quotation for discount evaluation & approval | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
+| `quotation:evaluate` | Preview discount evaluation and risk scoring | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
 | `quotation:send` | Send finalized draft quotations to customers | `ADMIN`, `SALES_REP`, `SALES_MANAGER` |
 | `quotation:delete` | Delete draft quotations | `ADMIN`, `SALES_MANAGER` |
 | `quotation:approve` | Approve quotation workflows | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
+| `approval:read` | View pending approval queue | `ADMIN`, `SALES_REP`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
+| `approval:approve` | Approve pending discount approvals | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
+| `approval:reject` | Reject pending discount approvals | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `pricing:manage` | Configure price lists and rules | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `discount:approve` | Approve discount thresholds | `ADMIN`, `SALES_MANAGER`, `FINANCE_OPERATIONS` |
 | `discount:override` | Override executive discount ceilings | `ADMIN`, `FINANCE_OPERATIONS` |
@@ -1778,18 +2088,18 @@ The Quotations module manages B2B sales quotes, monotonic sequence-based quote n
 
 ---
 
-## 14. Error Codes
+## 15. Error Codes
 
 | Code | HTTP Status | Description |
 |---|---|---|
 | `VALIDATION_ERROR` | `400` | Input payload validation failed against Zod schema |
-| `BAD_REQUEST` | `400` | Malformed request structure or invalid state transition |
+| `BAD_REQUEST` | `400` | Malformed request structure, invalid state transition, or premature approval step |
 | `UNAUTHORIZED` | `401` | Missing or invalid authentication credentials |
 | `TOKEN_EXPIRED` | `401` | JWT access token expired |
 | `TOKEN_INVALID` | `401` | JWT signature is invalid |
-| `FORBIDDEN` | `403` | User lacks the required role or permission |
+| `FORBIDDEN` | `403` | User lacks the required role or permission (e.g. Sales Rep approving, or Manager approving Finance step) |
 | `NOT_FOUND` | `404` | Target resource was not found |
-| `CONFLICT` | `409` | State conflict (e.g. duplicate name/SKU, or deletion of entity with active dependencies) |
+| `CONFLICT` | `409` | State conflict (e.g. duplicate submission or entity with active dependencies) |
 | `INTERNAL_ERROR` | `500` | Unhandled server exception |
 
 
