@@ -22,6 +22,7 @@ export interface PendingApprovalItem {
     subtotal: string;
     discountAmount: string;
     status: string;
+    notes?: string | null;
     currency: string;
     customerId: string;
     createdById: string;

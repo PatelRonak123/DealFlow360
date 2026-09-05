@@ -21,6 +21,7 @@ export interface PendingApprovalListItem extends QuotationApproval {
     subtotal?: string;
     discountAmount?: string;
     status?: string;
+    notes?: string | null;
     currency: string;
     customerId: string;
     createdById: string;
@@ -202,6 +203,7 @@ export class DiscountGovernanceRepository {
         subtotal: row.quotation.subtotal,
         discountAmount: row.quotation.discountAmount,
         status: row.quotation.status,
+        notes: row.quotation.notes,
         currency: row.quotation.currency,
         customerId: row.quotation.customerId,
         createdById: row.quotation.createdBy,
