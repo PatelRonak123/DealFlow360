@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { productApi, ProductQueryParams } from '../api/productApi';
 
 export const productKeys = {
@@ -8,6 +8,7 @@ export const productKeys = {
   details: () => [...productKeys.all, 'detail'] as const,
   detail: (id: string) => [...productKeys.details(), id] as const,
   priceLists: () => ['priceLists'] as const,
+  categories: () => ['productCategories'] as const,
 };
 
 export function useProducts(params?: ProductQueryParams) {
@@ -15,6 +16,7 @@ export function useProducts(params?: ProductQueryParams) {
     queryKey: productKeys.list(params),
     queryFn: () => productApi.getProducts(params),
     staleTime: 1000 * 60 * 5,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -31,5 +33,13 @@ export function usePriceLists() {
     queryKey: productKeys.priceLists(),
     queryFn: () => productApi.getPriceLists(),
     staleTime: 1000 * 60 * 10,
+  });
+}
+
+export function useCategories() {
+  return useQuery({
+    queryKey: productKeys.categories(),
+    queryFn: () => productApi.getCategories(),
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 }

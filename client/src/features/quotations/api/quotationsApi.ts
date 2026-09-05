@@ -117,4 +117,59 @@ export const quotationsApi = {
     );
     return response.data.data!;
   },
+
+  // Send approved quotation to customer
+  sendQuotation: async (id: string): Promise<BackendQuotation> => {
+    const response = await apiClient.post<ApiResponse<BackendQuotation>>(`/quotations/${id}/send`);
+    return response.data.data!;
+  },
+
+  // Move quotation into client negotiation
+  negotiateQuotation: async (
+    id: string,
+    payload?: { notes?: string; requestedDiscountPercent?: number }
+  ): Promise<BackendQuotation> => {
+    const response = await apiClient.post<ApiResponse<BackendQuotation>>(
+      `/quotations/${id}/negotiate`,
+      payload || {}
+    );
+    return response.data.data!;
+  },
+
+  // Create revised quotation draft
+  reviseQuotation: async (
+    id: string,
+    payload?: { notes?: string }
+  ): Promise<BackendQuotation> => {
+    const response = await apiClient.post<ApiResponse<BackendQuotation>>(
+      `/quotations/${id}/revise`,
+      payload || {}
+    );
+    return response.data.data!;
+  },
+
+  // Mark quotation as Won
+  markQuotationWon: async (
+    id: string,
+    payload?: { notes?: string }
+  ): Promise<BackendQuotation> => {
+    const response = await apiClient.post<ApiResponse<BackendQuotation>>(
+      `/quotations/${id}/win`,
+      payload || {}
+    );
+    return response.data.data!;
+  },
+
+  // Mark quotation as Lost
+  markQuotationLost: async (
+    id: string,
+    payload?: { reason?: string; notes?: string }
+  ): Promise<BackendQuotation> => {
+    const response = await apiClient.post<ApiResponse<BackendQuotation>>(
+      `/quotations/${id}/lose`,
+      payload || {}
+    );
+    return response.data.data!;
+  },
 };
+

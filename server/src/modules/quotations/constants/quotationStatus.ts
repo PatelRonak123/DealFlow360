@@ -6,6 +6,9 @@ export const QuotationStatuses = {
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
   SENT: 'SENT',
+  NEGOTIATION: 'NEGOTIATION',
+  WON: 'WON',
+  LOST: 'LOST',
   CANCELLED: 'CANCELLED',
   EXPIRED: 'EXPIRED',
 } as const;

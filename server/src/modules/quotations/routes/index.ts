@@ -51,6 +51,36 @@ quotationsRouter.post(
 );
 
 quotationsRouter.post(
+  '/:id/send',
+  requirePermission(Permissions.QUOTATION_SEND),
+  (req, res, next) => quotationsController.send(req, res, next)
+);
+
+quotationsRouter.post(
+  '/:id/negotiate',
+  requirePermission(Permissions.QUOTATION_UPDATE),
+  (req, res, next) => quotationsController.negotiate(req, res, next)
+);
+
+quotationsRouter.post(
+  '/:id/revise',
+  requirePermission(Permissions.QUOTATION_CREATE),
+  (req, res, next) => quotationsController.revise(req, res, next)
+);
+
+quotationsRouter.post(
+  '/:id/win',
+  requirePermission(Permissions.QUOTATION_UPDATE),
+  (req, res, next) => quotationsController.markWon(req, res, next)
+);
+
+quotationsRouter.post(
+  '/:id/lose',
+  requirePermission(Permissions.QUOTATION_UPDATE),
+  (req, res, next) => quotationsController.markLost(req, res, next)
+);
+
+quotationsRouter.post(
   '/:id/evaluate-discount',
   requirePermission(Permissions.QUOTATION_EVALUATE),
   (req, res, next) => governanceController.evaluateDiscount(req, res, next)
