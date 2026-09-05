@@ -18,6 +18,7 @@ export interface RegisterCredentials {
   name: string;
   email: string;
   password: string;
+  companyName?: string;
 }
 
 export interface AuthResult {
