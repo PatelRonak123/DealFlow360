@@ -95,6 +95,9 @@ export const QuotationsListPage: React.FC = () => {
     PENDING_FINANCE_APPROVAL: 'pending',
     APPROVED: 'approved',
     SENT: 'negotiating',
+    NEGOTIATION: 'negotiating',
+    WON: 'won',
+    LOST: 'rejected',
     REJECTED: 'rejected',
     CANCELLED: 'rejected',
     EXPIRED: 'default',
@@ -106,6 +109,9 @@ export const QuotationsListPage: React.FC = () => {
     PENDING_FINANCE_APPROVAL: 'Finance Approval Pending',
     APPROVED: 'Approved',
     SENT: 'Sent to Customer',
+    NEGOTIATION: 'In Negotiation',
+    WON: 'Won',
+    LOST: 'Lost',
     REJECTED: 'Rejected',
     CANCELLED: 'Cancelled',
     EXPIRED: 'Expired',
@@ -176,6 +182,8 @@ export const QuotationsListPage: React.FC = () => {
             { id: 'PENDING_FINANCE_APPROVAL', label: 'Finance Review' },
             { id: 'APPROVED', label: 'Approved' },
             { id: 'SENT', label: 'Sent' },
+            { id: 'NEGOTIATION', label: 'In Negotiation' },
+            { id: 'WON', label: 'Won' },
             { id: 'REJECTED', label: 'Rejected' },
           ].map((tab) => (
             <button

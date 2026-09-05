@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { customerApi, CustomerQueryParams } from '../api/customerApi';
 
 export const customerKeys = {
@@ -14,6 +14,7 @@ export function useCustomers(params?: CustomerQueryParams) {
     queryKey: customerKeys.list(params),
     queryFn: () => customerApi.getCustomers(params),
     staleTime: 1000 * 60 * 5, // 5 minutes cache
+    placeholderData: keepPreviousData,
   });
 }
 

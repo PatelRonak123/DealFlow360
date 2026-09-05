@@ -161,6 +161,86 @@ export function useCancelQuotationMutation() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: quotationKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: quotationKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['kanban-column'] });
     },
   });
 }
+
+// Mutation: Send Quotation to Customer
+export function useSendQuotationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => quotationsApi.sendQuotation(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: quotationKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: quotationKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['kanban-column'] });
+    },
+  });
+}
+
+// Mutation: Move Quotation into Negotiation
+export function useNegotiateQuotationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload?: { notes?: string; requestedDiscountPercent?: number };
+    }) => quotationsApi.negotiateQuotation(id, payload),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: quotationKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: quotationKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['kanban-column'] });
+    },
+  });
+}
+
+// Mutation: Create Revised Quotation
+export function useReviseQuotationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload?: { notes?: string } }) =>
+      quotationsApi.reviseQuotation(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: quotationKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['kanban-column'] });
+    },
+  });
+}
+
+// Mutation: Mark Quotation as Won
+export function useMarkQuotationWonMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload?: { notes?: string } }) =>
+      quotationsApi.markQuotationWon(id, payload),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: quotationKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: quotationKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['kanban-column'] });
+    },
+  });
+}
+
+// Mutation: Mark Quotation as Lost
+export function useMarkQuotationLostMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload?: { reason?: string; notes?: string };
+    }) => quotationsApi.markQuotationLost(id, payload),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: quotationKeys.detail(id) });
+      queryClient.invalidateQueries({ queryKey: quotationKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: ['kanban-column'] });
+    },
+  });
+}
+

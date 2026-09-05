@@ -118,12 +118,16 @@ export class CustomersRepository {
   }
 
   async delete(id: string, client: Database = db): Promise<boolean> {
-    const result = await client
-      .delete(customers)
+    const [updated] = await client
+      .update(customers)
+      .set({
+        status: 'INACTIVE',
+        updatedAt: new Date(),
+      })
       .where(eq(customers.id, id))
       .returning();
 
-    return result.length > 0;
+    return !!updated;
   }
 }
 
