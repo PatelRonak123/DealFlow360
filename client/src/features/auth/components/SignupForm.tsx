@@ -10,6 +10,7 @@ import {
   LuLockKeyhole,
   LuMail,
   LuUser,
+  LuBuilding2,
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { validateSignup } from '../schemas/auth.schema';
@@ -21,6 +22,7 @@ export const SignupForm: React.FC = () => {
   const { register } = useAuth();
 
   const [name, setName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -48,6 +50,7 @@ export const SignupForm: React.FC = () => {
         name: name.trim(),
         email: email.trim(),
         password,
+        companyName: companyName.trim() || undefined,
       });
 
       showProgressToast('Configuring workspace...', 80, 'signup-progress');
@@ -129,6 +132,24 @@ export const SignupForm: React.FC = () => {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+              className="h-12 w-full rounded-xl border border-[#DCE4F0] bg-white/80 pl-11 pr-4 text-sm text-[#172033] outline-none transition placeholder:text-[#AAB5C5] focus:border-[#3165E8] focus:bg-white focus:ring-4 focus:ring-[#3165E8]/10"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="signup-company" className="mb-2 block text-sm font-semibold text-[#27334A]">
+            Company / Organization Name
+          </label>
+          <div className="relative">
+            <LuBuilding2 className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9AA7BA]" size={18} />
+            <input
+              id="signup-company"
+              name="companyName"
+              type="text"
+              placeholder="Acme Corporation Ltd"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
               className="h-12 w-full rounded-xl border border-[#DCE4F0] bg-white/80 pl-11 pr-4 text-sm text-[#172033] outline-none transition placeholder:text-[#AAB5C5] focus:border-[#3165E8] focus:bg-white focus:ring-4 focus:ring-[#3165E8]/10"
             />
           </div>
