@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth';
-import { LuCircleCheck, LuLogOut, LuShield, LuUser, LuWorkflow } from 'react-icons/lu';
+import { LuLogOut, LuShield, LuUser, LuWorkflow } from 'react-icons/lu';
 import toast from 'react-hot-toast';
 
 export const MainLayout: React.FC = () => {

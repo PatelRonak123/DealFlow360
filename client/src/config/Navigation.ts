@@ -1,7 +1,7 @@
 import {
   LayoutGrid, FileText, Kanban, Users, Package, ClipboardCheck,
   Boxes, Receipt, Repeat, Percent, Warehouse, CalendarClock,
-  BarChart2, ShieldCheck, LucideIcon,
+  BarChart2, ShieldCheck, CreditCard, LucideIcon,
 } from 'lucide-react';
 import { UserRole } from '@/types/Auth';
 
@@ -20,14 +20,19 @@ export interface NavSection {
 export const navigationConfig: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard', to: '/dashboard', icon: LayoutGrid, roles: ['sales_rep', 'sales_manager', 'finance_ops', 'customer', 'admin'] },
-      { label: 'Quotations', to: '/quotations', icon: FileText, roles: ['sales_rep', 'sales_manager', 'customer'] },
+      { label: 'Dashboard', to: '/dashboard', icon: LayoutGrid, roles: ['sales_rep', 'sales_manager', 'finance_ops', 'admin'] },
+      { label: 'Dashboard', to: '/customer/dashboard', icon: LayoutGrid, roles: ['customer'] },
+      { label: 'Quotations', to: '/quotations', icon: FileText, roles: ['sales_rep', 'sales_manager'] },
+      { label: 'Quotations', to: '/customer/quotations', icon: FileText, roles: ['customer'] },
+      { label: 'Orders', to: '/customer/orders', icon: Boxes, roles: ['customer'] },
       { label: 'Pipeline', to: '/pipeline', icon: Kanban, roles: ['sales_rep', 'sales_manager'] },
       { label: 'Customers', to: '/customers', icon: Users, roles: ['sales_rep', 'sales_manager', 'admin'] },
       { label: 'Products', to: '/products', icon: Package, roles: ['sales_rep', 'sales_manager', 'admin'] },
       { label: 'Approvals', to: '/approvals', icon: ClipboardCheck, roles: ['sales_manager', 'finance_ops'] },
       { label: 'Fulfillment', to: '/fulfillment', icon: Boxes, roles: ['sales_manager', 'finance_ops'] },
-      { label: 'Billing & Invoices', to: '/billing', icon: Receipt, roles: ['finance_ops', 'customer'] },
+      { label: 'Billing & Invoices', to: '/billing', icon: Receipt, roles: ['finance_ops'] },
+      { label: 'Invoices', to: '/customer/invoices', icon: Receipt, roles: ['customer'] },
+      { label: 'Payments', to: '/customer/payments', icon: CreditCard, roles: ['customer'] },
       { label: 'Subscriptions', to: '/subscriptions', icon: Repeat, roles: ['finance_ops', 'sales_manager'] },
       { label: 'Reports', to: '/reports', icon: BarChart2, roles: ['sales_manager', 'finance_ops', 'admin'] },
       { label: 'User Management', to: '/admin/users', icon: ShieldCheck, roles: ['admin'] },

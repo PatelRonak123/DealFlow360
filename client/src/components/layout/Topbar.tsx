@@ -1,20 +1,46 @@
 import { Bell, Search, UserRound, LogOut } from 'lucide-react';
 import { RoleBadge } from '@/components/common/RoleBadge';
-import { CURRENT_USER } from '@/config/CurrentUser';
 import { useAuth } from '@/features/auth';
+import { useCustomerProfile } from '@/features/customer-portal/hooks/useCustomerProfile';
 import { useNavigate } from 'react-router-dom';
 import { UserRole } from '@/types/Auth';
 
 export function Topbar({ notificationCount = 0 }: { notificationCount?: number }) {
-  const { user, logout } = useAuth();
+  const { user, isLoading: isAuthLoading, logout } = useAuth();
   const navigate = useNavigate();
 
-  const displayName = user?.name || CURRENT_USER.name;
   const rawRole = user?.roles?.[0]?.toLowerCase();
   const role: UserRole =
     rawRole === 'sales_representative' || rawRole === 'sales_rep'
       ? 'sales_rep'
-      : (rawRole as UserRole) || CURRENT_USER.role;
+      : rawRole === 'sales_manager'
+      ? 'sales_manager'
+      : rawRole === 'finance_ops' || rawRole === 'finance'
+      ? 'finance_ops'
+      : rawRole === 'admin'
+      ? 'admin'
+      : 'customer';
+
+  const isCustomer = role === 'customer';
+
+  // If customer role and user?.name is not yet known, optionally fetch profile data
+  const { data: customerProfile, isLoading: isProfileLoading } = useCustomerProfile({
+    enabled: isCustomer && !user?.name,
+  });
+
+  const isNameLoading = isAuthLoading || (isCustomer && isProfileLoading && !user?.name);
+
+  // Dynamic customer / user display name resolution
+  let displayName: string;
+  if (isNameLoading) {
+    displayName = 'Loading...';
+  } else if (user?.name) {
+    displayName = user.name;
+  } else if (isCustomer && (customerProfile?.contactName || customerProfile?.companyName)) {
+    displayName = customerProfile.contactName || customerProfile.companyName;
+  } else {
+    displayName = isCustomer ? 'Customer' : 'User';
+  }
 
   const handleLogout = async () => {
     await logout();
