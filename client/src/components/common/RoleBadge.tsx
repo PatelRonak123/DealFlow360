@@ -1,4 +1,6 @@
+import React from 'react';
 import { UserRole } from '@/types/Auth';
+import { ShieldCheck, Briefcase, Calculator, Building2 } from 'lucide-react';
 
 const roleLabels: Record<UserRole, string> = {
   sales_rep: 'Sales Representative',
@@ -28,3 +30,5 @@ export function RoleBadge({ role, className = '' }: { role: UserRole; className?
     </span>
   );
 }
+
+export default RoleBadge;

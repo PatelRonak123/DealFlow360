@@ -193,3 +193,5 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
     </header>
   );
 }
+
+export default Topbar;

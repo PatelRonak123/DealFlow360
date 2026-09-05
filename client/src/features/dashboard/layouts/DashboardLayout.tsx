@@ -8,10 +8,12 @@ export function DashboardLayout() {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="min-w-0 flex-1 overflow-y-auto p-10">
+        <main className="min-w-0 flex-1 p-6 sm:p-8 lg:p-10">
           <Outlet />
         </main>
       </div>
     </div>
   );
 }
+
+export default DashboardLayout;
