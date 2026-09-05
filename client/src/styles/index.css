@@ -2,7 +2,9 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 min-h-screen antialiased;
+    @apply min-h-screen antialiased;
+    background: #f5f7ff;
+    color: #17213a;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
 }
