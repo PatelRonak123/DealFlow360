@@ -6,7 +6,7 @@ import { normalizeRole, getRoleTitle, ROLES } from '@/lib/accessControl';
 
 export function Sidebar() {
   const { user } = useAuth();
-  const activeRole = normalizeRole(user?.activeRole || user?.role || ROLES.SALES_REP);
+  const activeRole = normalizeRole(user?.roles?.[0] || user?.activeRole || user?.role || ROLES.SALES_REP);
   const sections = getNavForRole(activeRole);
 
   return (

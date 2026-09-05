@@ -15,7 +15,7 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
   const notifRef = useRef<HTMLDivElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
 
-  const activeRole = normalizeRole(user?.activeRole || user?.role || ROLES.SALES_REP);
+  const activeRole = normalizeRole(user?.roles?.[0] || user?.activeRole || user?.role || ROLES.SALES_REP);
   const isCustomer = activeRole === ROLES.CUSTOMER;
 
   // Available roles for switching: All assigned user roles, or full set if Admin

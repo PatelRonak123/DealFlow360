@@ -1,10 +1,9 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthLayout } from '../layouts';
 import { Login, Signup } from '@/features/auth';
 import { ProtectedRoute } from './ProtectedRoute';
 import { DashboardLayout } from '@/features/dashboard/layouts/DashboardLayout';
-import { CustomerPortalLayout } from '@/layouts/CustomerPortalLayout';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 
 // Dashboards
@@ -56,50 +55,52 @@ export const AppRoutes: React.FC = () => {
 
       {/* Protected Application Workspace */}
       <Route element={<ProtectedRoute />}>
-        {/* Intelligent Role Dashboard Resolver */}
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        {/* Unified Dashboard Layout with Sidebar & Topbar for all roles (Customer, Sales Rep, Sales Manager, Finance, Admin) */}
+        <Route element={<DashboardLayout />}>
+          {/* Intelligent Role Dashboard Resolver */}
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
 
-        {/* 1. CUSTOMER PORTAL (Isolated in CustomerPortalLayout) */}
-        <Route
-          element={
-            <RoleGuard allowedRoles={[ROLES.CUSTOMER, ROLES.ADMIN]} moduleName="Customer Portal">
-              <CustomerPortalLayout />
-            </RoleGuard>
-          }
-        >
-          <Route path="/customer/dashboard" element={<CustomerDashboardPage />} />
-          <Route path="/customer" element={<Navigate to="/customer/dashboard" replace />} />
-          <Route path="/customer/quotations" element={<MyQuotationsPage />} />
-          <Route path="/customer/quotations/:id" element={<CustomerQuotationDetailPage />} />
-          <Route path="/customer/quotations/:id/negotiate" element={<QuotationNegotiatePage />} />
-          <Route path="/customer/orders" element={<CustomerOrdersPage />} />
-          <Route path="/customer/orders/:id" element={<CustomerOrderDetailsPage />} />
-          <Route path="/customer/invoices" element={<CustomerInvoicesPage />} />
-          <Route path="/customer/invoices/:id" element={<CustomerInvoiceDetailsPage />} />
-          <Route path="/customer/payments" element={<CustomerPaymentsPage />} />
-          <Route path="/customer/subscriptions" element={<CustomerSubscriptionsPage />} />
-          <Route path="/customer/subscriptions/:id" element={<CustomerSubscriptionDetailsPage />} />
-          <Route path="/customer/notifications" element={<CustomerNotificationsPage />} />
-          <Route path="/customer/profile" element={<CustomerProfilePage />} />
-        </Route>
+          {/* 1. CUSTOMER PORTAL */}
+          <Route
+            element={
+              <RoleGuard allowedRoles={[ROLES.CUSTOMER, ROLES.ADMIN]} moduleName="Customer Portal">
+                <Outlet />
+              </RoleGuard>
+            }
+          >
+            <Route path="/customer/dashboard" element={<CustomerDashboardPage />} />
+            <Route path="/customer" element={<Navigate to="/customer/dashboard" replace />} />
+            <Route path="/customer/quotations" element={<MyQuotationsPage />} />
+            <Route path="/customer/quotations/:id" element={<CustomerQuotationDetailPage />} />
+            <Route path="/customer/quotations/:id/negotiate" element={<QuotationNegotiatePage />} />
+            <Route path="/customer/orders" element={<CustomerOrdersPage />} />
+            <Route path="/customer/orders/:id" element={<CustomerOrderDetailsPage />} />
+            <Route path="/customer/invoices" element={<CustomerInvoicesPage />} />
+            <Route path="/customer/invoices/:id" element={<CustomerInvoiceDetailsPage />} />
+            <Route path="/customer/payments" element={<CustomerPaymentsPage />} />
+            <Route path="/customer/subscriptions" element={<CustomerSubscriptionsPage />} />
+            <Route path="/customer/subscriptions/:id" element={<CustomerSubscriptionDetailsPage />} />
+            <Route path="/customer/notifications" element={<CustomerNotificationsPage />} />
+            <Route path="/customer/profile" element={<CustomerProfilePage />} />
+          </Route>
 
-        {/* 2. INTERNAL ENTERPRISE WORKSPACES (Rendered in DashboardLayout) */}
-        <Route
-          element={
-            <RoleGuard
-              allowedRoles={[
-                ROLES.ADMIN,
-                ROLES.SALES_REP,
-                ROLES.SALES_MANAGER,
-                ROLES.FINANCE,
-              ]}
-              moduleName="Internal Workspace"
-            >
-              <DashboardLayout />
-            </RoleGuard>
-          }
-        >
+          {/* 2. INTERNAL ENTERPRISE WORKSPACES */}
+          <Route
+            element={
+              <RoleGuard
+                allowedRoles={[
+                  ROLES.ADMIN,
+                  ROLES.SALES_REP,
+                  ROLES.SALES_MANAGER,
+                  ROLES.FINANCE,
+                ]}
+                moduleName="Internal Workspace"
+              >
+                <Outlet />
+              </RoleGuard>
+            }
+          >
           {/* Dedicated Role Dashboards - strictly isolated per role */}
           <Route
             path="/admin/dashboard"
@@ -333,6 +334,7 @@ export const AppRoutes: React.FC = () => {
             }
           />
         </Route>
+      </Route>
       </Route>
 
       {/* Fallback route */}
