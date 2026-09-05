@@ -1,8 +1,19 @@
 import { CURRENT_USER } from '@/config/CurrentUser';
+import { useAuth } from '@/features/auth';
+import { UserRole } from '@/types/Auth';
 import { ArrowDown, ArrowUp, Clock3, FileText, IndianRupee, Tag } from 'lucide-react';
 
 export function DashboardPage() {
-  return <RoleDashboard role={CURRENT_USER.role} />;
+  const { user } = useAuth();
+  const rawRole = user?.roles?.[0]?.toLowerCase();
+  const role: UserRole =
+    rawRole === 'sales_representative' || rawRole === 'sales_rep'
+      ? 'sales_rep'
+      : (rawRole as UserRole) || CURRENT_USER.role;
+
+  const name = user?.name || CURRENT_USER.name;
+
+  return <RoleDashboard role={role} name={name} />;
 }
 
 const roleLabels: Record<string, string> = {
@@ -27,12 +38,14 @@ const quotationRows = [
   ['Q-1021', 'TechWorld Enterprises', '₹ 3,10,000', 'Rejected'],
 ];
 
-function RoleDashboard({ role }: { role: string }) {
+function RoleDashboard({ role, name }: { role: string; name: string }) {
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-sm font-medium text-[#71809f]">Welcome back, {CURRENT_USER.name}!</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17213a]">{roleLabels[role]} Dashboard</h1>
+        <p className="text-sm font-medium text-[#71809f]">Welcome back, {name}!</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17213a]">
+          {roleLabels[role] || 'Enterprise'} Dashboard
+        </h1>
       </div>
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map(({ label, value, change, icon: Icon, tone, trend }) => (
