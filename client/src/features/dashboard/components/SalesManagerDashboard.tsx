@@ -1,5 +1,12 @@
 import { useState, useMemo } from 'react';
-import { ClipboardCheck, Download, ShieldCheck } from 'lucide-react';
+import {
+  ClipboardCheck,
+  Download,
+  ShieldCheck,
+  TrendingUp,
+  Truck,
+  Repeat,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PendingApproval, RecentTeamQuote, TeamRep } from '../types';
 import { useApprovals } from '../hooks/useApprovals';
@@ -12,6 +19,9 @@ import { ApprovalRejectModal } from './ApprovalRejectModal';
 import { RepLeaderboard } from './RepLeaderboard';
 import { PipelineGovernance } from './PipelineGovernance';
 import { TeamRecentQuotes } from './TeamRecentQuotes';
+import { FulfillmentLogisticsSection } from '@/features/fulfillment/components/FulfillmentLogisticsSection';
+import { SubscriptionsSection } from '@/features/subscriptions/components/SubscriptionsSection';
+import { RevenueAnalyticsSection } from '@/features/reports/components/RevenueAnalyticsSection';
 
 function formatINR(val: number): string {
   if (isNaN(val) || val === 0) return '₹ 0';
@@ -47,6 +57,7 @@ export function SalesManagerDashboard({ userName }: { userName?: string }) {
   const [selectedReject, setSelectedReject] = useState<PendingApproval | null>(null);
   const [approveComment, setApproveComment] = useState('');
   const [rejectComment, setRejectComment] = useState('');
+  const [activeTab, setActiveTab] = useState<'governance' | 'revenue' | 'fulfillment' | 'subscriptions'>('governance');
 
   // 3. Dynamically compute Manager KPIs from actual database quotations
   const kpis = useMemo(() => {
@@ -278,22 +289,22 @@ export function SalesManagerDashboard({ userName }: { userName?: string }) {
   }, [allQuotes]);
 
   const handleApproveConfirm = async (id: string, notes?: string) => {
+    setSelectedApprove(null);
+    setApproveComment('');
     try {
       await approve(id, notes);
-      setSelectedApprove(null);
-      setApproveComment('');
     } catch {
-      // Error notifications handled by useApprovals hook
+      // Error notifications and rollback handled by useApprovals hook
     }
   };
 
   const handleRejectConfirm = async (id: string, reason: string) => {
+    setSelectedReject(null);
+    setRejectComment('');
     try {
       await reject(id, reason);
-      setSelectedReject(null);
-      setRejectComment('');
     } catch {
-      // Error notifications handled by useApprovals hook
+      // Error notifications and rollback handled by useApprovals hook
     }
   };
 
@@ -336,46 +347,126 @@ export function SalesManagerDashboard({ userName }: { userName?: string }) {
         </div>
       </div>
 
-      {/* Top 4 Manager KPIs - 100% Dynamic from PostgreSQL */}
-      <ManagerKpiCards
-        pipelineValue={kpis.pipelineValue}
-        openDealsCount={kpis.openDealsCount}
-        pendingCount={pendingCount}
-        quotaAchieved={kpis.quotaAchieved}
-        quotaTarget={kpis.quotaTarget}
-        quotaPercent={kpis.quotaPercent}
-        avgDiscount={kpis.avgDiscount}
-        isLoading={isDataLoading}
-      />
+      {/* Executive Operational Hub Tab Navigation */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#eef2f9] pb-4">
+        {[
+          {
+            id: 'governance',
+            label: 'Approvals & Governance',
+            icon: ShieldCheck,
+            badge: pendingCount > 0 ? `${pendingCount} Pending` : undefined,
+          },
+          {
+            id: 'revenue',
+            label: 'Revenue Analytics & Forecast',
+            icon: TrendingUp,
+          },
+          {
+            id: 'fulfillment',
+            label: 'Fulfillment & Logistics',
+            icon: Truck,
+          },
+          {
+            id: 'subscriptions',
+            label: 'Subscriptions & ARR',
+            icon: Repeat,
+          },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition cursor-pointer ${
+                isActive
+                  ? 'bg-[#3568ed] text-white shadow-sm shadow-[#3568ed]/25'
+                  : 'bg-white border border-[#e7ebf7] text-[#59657d] hover:bg-gray-50 hover:text-[#17213a]'
+              }`}
+            >
+              <Icon size={16} />
+              <span>{tab.label}</span>
+              {tab.badge && (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Actionable Approvals Queue - 100% Dynamic with Accept/Reject buttons */}
-      <ApprovalQueueTable
-        approvals={approvals}
-        isLoading={isApprovalsLoading}
-        isProcessing={isProcessing}
-        onApproveClick={(app) => {
-          setSelectedApprove(app);
-          setApproveComment('');
-        }}
-        onRejectClick={(app) => {
-          setSelectedReject(app);
-          setRejectComment('');
-        }}
-      />
+      {/* Tab 1: Approvals & Core Sales Governance */}
+      {activeTab === 'governance' && (
+        <div className="space-y-8 animate-in fade-in duration-200">
+          {/* Top 4 Manager KPIs - 100% Dynamic from PostgreSQL */}
+          <ManagerKpiCards
+            pipelineValue={kpis.pipelineValue}
+            openDealsCount={kpis.openDealsCount}
+            pendingCount={pendingCount}
+            quotaAchieved={kpis.quotaAchieved}
+            quotaTarget={kpis.quotaTarget}
+            quotaPercent={kpis.quotaPercent}
+            avgDiscount={kpis.avgDiscount}
+            isLoading={isDataLoading}
+          />
 
-      {/* 2 Column: Dynamic Rep Leaderboard & Dynamic Pipeline Governance */}
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <RepLeaderboard reps={dynamicReps} isLoading={isQuotationsLoading} />
-        <PipelineGovernance
-          excessiveDiscountQuotes={governanceData.excessiveDiscountQuotes}
-          stalledQuotes={governanceData.stalledQuotes}
-          highValueQuotesCount={governanceData.highValueQuotesCount}
-          isLoading={isQuotationsLoading}
-        />
-      </section>
+          {/* Actionable Approvals Queue - 100% Dynamic with Accept/Reject buttons */}
+          <ApprovalQueueTable
+            approvals={approvals}
+            isLoading={isApprovalsLoading}
+            isProcessing={isProcessing}
+            onApproveClick={(app) => {
+              setSelectedApprove(app);
+              setApproveComment('');
+            }}
+            onRejectClick={(app) => {
+              setSelectedReject(app);
+              setRejectComment('');
+            }}
+          />
 
-      {/* Cross-Team Recent Quotes - 100% Dynamic from database */}
-      <TeamRecentQuotes quotes={dynamicRecentQuotes} isLoading={isQuotationsLoading} />
+          {/* 2 Column: Dynamic Rep Leaderboard & Dynamic Pipeline Governance */}
+          <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <RepLeaderboard reps={dynamicReps} isLoading={isQuotationsLoading} />
+            <PipelineGovernance
+              excessiveDiscountQuotes={governanceData.excessiveDiscountQuotes}
+              stalledQuotes={governanceData.stalledQuotes}
+              highValueQuotesCount={governanceData.highValueQuotesCount}
+              isLoading={isQuotationsLoading}
+            />
+          </section>
+
+          {/* Cross-Team Recent Quotes - 100% Dynamic from database */}
+          <TeamRecentQuotes quotes={dynamicRecentQuotes} isLoading={isQuotationsLoading} />
+        </div>
+      )}
+
+      {/* Tab 2: Revenue Analytics & Forecast */}
+      {activeTab === 'revenue' && (
+        <div className="animate-in fade-in duration-200">
+          <RevenueAnalyticsSection />
+        </div>
+      )}
+
+      {/* Tab 3: Fulfillment & Logistics */}
+      {activeTab === 'fulfillment' && (
+        <div className="animate-in fade-in duration-200">
+          <FulfillmentLogisticsSection />
+        </div>
+      )}
+
+      {/* Tab 4: Subscriptions & ARR */}
+      {activeTab === 'subscriptions' && (
+        <div className="animate-in fade-in duration-200">
+          <SubscriptionsSection />
+        </div>
+      )}
 
       {/* Approve Confirmation Modal */}
       <ApprovalConfirmModal

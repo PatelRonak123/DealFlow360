@@ -39,6 +39,9 @@ import { QuoteDetailPage } from '@/features/quotations/pages/QuoteDetailPage';
 import { CustomersListPage } from '@/features/customers/pages/CustomersListPage';
 import { ProductsCatalogPage } from '@/features/products/pages/ProductsCatalogPage';
 import { ApprovalsQueuePage } from '@/features/approvals';
+import { FulfillmentLogisticsPage } from '@/features/fulfillment/pages/FulfillmentLogisticsPage';
+import { SubscriptionsManagementPage } from '@/features/subscriptions/pages/SubscriptionsManagementPage';
+import { RevenueAnalyticsPage } from '@/features/reports/pages/RevenueAnalyticsPage';
 
 // Access Control
 import { RoleGuard } from '@/components/common/RoleGuard';
@@ -239,12 +242,7 @@ export const AppRoutes: React.FC = () => {
                 allowedRoles={[ROLES.SALES_MANAGER, ROLES.ADMIN]}
                 moduleName="Fulfillment Operations"
               >
-                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
-                  <h2 className="text-xl font-bold text-[#17213a]">Logistics &amp; Carrier Dispatch Console</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Warehouse operations and carrier manifests management.
-                  </p>
-                </div>
+                <FulfillmentLogisticsPage />
               </RoleGuard>
             }
           />
@@ -274,12 +272,7 @@ export const AppRoutes: React.FC = () => {
                 allowedRoles={[ROLES.FINANCE, ROLES.SALES_MANAGER, ROLES.ADMIN]}
                 moduleName="Subscription Management"
               >
-                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
-                  <h2 className="text-xl font-bold text-[#17213a]">Contract Renewals &amp; Mid-Term Amendments</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Restricted to Finance, Sales Management &amp; Administrators.
-                  </p>
-                </div>
+                <SubscriptionsManagementPage />
               </RoleGuard>
             }
           />
@@ -291,12 +284,7 @@ export const AppRoutes: React.FC = () => {
                 allowedRoles={[ROLES.SALES_MANAGER, ROLES.FINANCE, ROLES.ADMIN]}
                 moduleName="Revenue &amp; Pipeline Analytics"
               >
-                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xs">
-                  <h2 className="text-xl font-bold text-[#17213a]">Executive Revenue Analytics</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Cross-team quota pacing and revenue forecasting reports.
-                  </p>
-                </div>
+                <RevenueAnalyticsPage />
               </RoleGuard>
             }
           />
