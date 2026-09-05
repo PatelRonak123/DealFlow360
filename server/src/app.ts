@@ -8,6 +8,8 @@ import { sendSuccess } from './common/utils/index.js';
 // Domain module routers
 import { authRouter } from './modules/auth/index.js';
 import { usersRouter } from './modules/users/index.js';
+import { customerTiersRouter } from './modules/customer-tiers/index.js';
+import { categoriesRouter } from './modules/categories/index.js';
 import { customersRouter } from './modules/customers/index.js';
 import { productsRouter } from './modules/products/index.js';
 import { pricingRouter } from './modules/pricing/index.js';
@@ -63,6 +65,8 @@ export function createApp(): Express {
   const prefix = appConfig.apiPrefix;
   app.use(`${prefix}/auth`, authRouter);
   app.use(`${prefix}/users`, usersRouter);
+  app.use(`${prefix}/customer-tiers`, customerTiersRouter);
+  app.use(`${prefix}/categories`, categoriesRouter);
   app.use(`${prefix}/customers`, customersRouter);
   app.use(`${prefix}/products`, productsRouter);
   app.use(`${prefix}/pricing`, pricingRouter);

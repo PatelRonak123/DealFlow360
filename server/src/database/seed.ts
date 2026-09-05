@@ -1,12 +1,17 @@
-/**
- * Database Seeder Entrypoint
- * 
- * At this stage, no business seeds are populated.
- * Developers can add domain-specific seeding scripts as features are built.
- */
+import { bootstrapRbac } from '../modules/rbac/index.js';
+import { pool } from './db.js';
 
 async function seedDatabase(): Promise<void> {
-  console.log('Database seeding placeholder. No seed data configured at this stage.');
+  console.log('Starting system initialization & RBAC bootstrap...');
+  try {
+    await bootstrapRbac();
+    console.log('System initialization completed successfully.');
+  } catch (error) {
+    console.error('Error during database initialization:', error);
+    process.exit(1);
+  } finally {
+    await pool.end();
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
