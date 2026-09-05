@@ -12,10 +12,13 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/features/auth';
 import { useNavigate } from 'react-router-dom';
+import { usePendingApprovals } from '@/features/approvals';
 
 export const SalesManagerDashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { data: pendingData } = usePendingApprovals();
+  const pendingCount = pendingData?.items?.length ?? 0;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
@@ -36,7 +39,7 @@ export const SalesManagerDashboard: React.FC = () => {
             className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-purple-700 transition cursor-pointer"
           >
             <ShieldCheck className="h-4 w-4" />
-            Approvals Queue (3)
+            Approvals Queue ({pendingCount})
           </button>
         </div>
       </div>
@@ -61,8 +64,10 @@ export const SalesManagerDashboard: React.FC = () => {
             </span>
             <div>
               <p className="text-xs text-gray-500 font-semibold uppercase">Pending Approvals</p>
-              <p className="text-xl font-bold text-[#17213a]">3 Quotes</p>
-              <p className="text-[11px] text-amber-600 font-medium">2 High-Discount Escalations</p>
+              <p className="text-xl font-bold text-[#17213a]">{pendingCount} {pendingCount === 1 ? 'Quote' : 'Quotes'}</p>
+              <p className="text-[11px] text-amber-600 font-medium">
+                {pendingCount > 0 ? `${pendingCount} Escalation${pendingCount > 1 ? 's' : ''} Awaiting Review` : 'Queue Clear'}
+              </p>
             </div>
           </div>
         </Card>

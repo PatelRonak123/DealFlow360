@@ -1,240 +1,281 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Building2,
   Package,
-  Sparkles,
   ShieldCheck,
   AlertTriangle,
   CheckCircle2,
   Trash2,
   Plus,
-  Percent,
-  Layers,
   ArrowLeft,
+  Search,
+  RefreshCw,
+  Send,
+  FileText,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { INITIAL_CUSTOMERS } from '@/features/customers/data/customerData';
-import { INITIAL_PRODUCTS } from '@/features/products/data/catalogData';
-import { Product } from '@/features/products/types/Product';
-import { Quotation, QuotationLineItem } from '../types/Quotation';
-import {
-  calculateLineItem,
-  evaluateFinancialsAndGovernance,
-} from '../utils/quoteCalculations';
-import { getRecommendationsForQuote } from '@/features/upsell-cross-sell/utils/recommender';
-import { quotationStore } from '../store/quotationStore';
-import { useDeals } from '@/features/deals/store/dealStore';
+import { useCustomers } from '@/features/customers/hooks/useCustomers';
+import { useProducts, usePriceLists } from '@/features/products/hooks/useProducts';
+import { useCreateQuotationMutation } from '../hooks/useQuotationsQuery';
+import { BackendProductSummary } from '../types/quotationApi.types';
 import { formatINR, formatPercent } from '@/utils/formatters';
 import { apiClient, getAccessToken } from '@/api/apiClient';
+
+interface BuilderLineItem {
+  product: BackendProductSummary;
+  quantity: number;
+  discountPercent: number;
+  unitPrice: number;
+  grossAmount: number;
+  discountAmount: number;
+  netAmount: number;
+}
 
 export const QuoteBuilderPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { deals } = useDeals();
-
-  const preselectedDealId = searchParams.get('dealId');
   const preselectedCustomerId = searchParams.get('customerId');
 
-  // Customer Selection State
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(
-    preselectedCustomerId || 'CUST-001'
+  // 1. Fetch Real Customers, Products, and Price Lists from Backend
+  const { data: customerData, isLoading: isCustomersLoading } = useCustomers({ status: 'ACTIVE' });
+  const { data: productData, isLoading: isProductsLoading } = useProducts({ isActive: true });
+  const { data: priceLists, isLoading: isPriceListsLoading } = usePriceLists();
+
+  const customers = customerData?.items || [];
+  const products = productData?.items || [];
+  const defaultPriceList = priceLists?.find((pl) => pl.isDefault) || priceLists?.[0];
+
+  // 2. Selection State
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
+  const [issueDate, setIssueDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
   );
+  const [expiryDate, setExpiryDate] = useState<string>(
+    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  );
+
+  // Initialize selected customer once customers load
+  useEffect(() => {
+    if (customers.length > 0 && !selectedCustomerId) {
+      if (preselectedCustomerId && customers.some((c) => c.id === preselectedCustomerId)) {
+        setSelectedCustomerId(preselectedCustomerId);
+      } else {
+        setSelectedCustomerId(customers[0].id);
+      }
+    }
+  }, [customers, preselectedCustomerId, selectedCustomerId]);
+
   const selectedCustomer = useMemo(
-    () => INITIAL_CUSTOMERS.find((c) => c.id === selectedCustomerId) || INITIAL_CUSTOMERS[0],
-    [selectedCustomerId]
+    () => customers.find((c) => c.id === selectedCustomerId),
+    [customers, selectedCustomerId]
   );
 
-  const [paymentTerms, setPaymentTerms] = useState<'Net 30' | 'Net 45' | 'Net 60'>(
-    selectedCustomer.paymentTerms
-  );
+  // 3. Line Items State
+  const [lineItems, setLineItems] = useState<BuilderLineItem[]>([]);
 
-  // Line items state
-  const [lineItems, setLineItems] = useState<QuotationLineItem[]>([
-    calculateLineItem(INITIAL_PRODUCTS[0], 2, 10), // Default with 2 Server Blades @ 10%
-  ]);
+  // Automatically add first product once loaded if lines empty
+  useEffect(() => {
+    if (products.length > 0 && lineItems.length === 0) {
+      const p = products[0];
+      const unitPrice = parseFloat(String(p.basePrice)) || 0;
+      const qty = 1;
+      const disc = 5;
+      const gross = unitPrice * qty;
+      const discAmt = (gross * disc) / 100;
+      setLineItems([
+        {
+          product: p,
+          quantity: qty,
+          discountPercent: disc,
+          unitPrice,
+          grossAmount: gross,
+          discountAmount: discAmt,
+          netAmount: gross - discAmt,
+        },
+      ]);
+    }
+  }, [products, lineItems.length]);
 
-  // Product Picker Modal
+  // 4. Product Modal & Filtering
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [productSearch, setProductSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  // Computed Financials & Governance
-  const financialsAndGovernance = useMemo(
-    () => evaluateFinancialsAndGovernance(lineItems, selectedCustomer.tier, paymentTerms),
-    [lineItems, selectedCustomer.tier, paymentTerms]
-  );
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => {
+      if (p.category?.name) set.add(p.category.name);
+    });
+    return Array.from(set);
+  }, [products]);
 
-  // Contextual Upsell Recommendations
-  const upsellRecommendations = useMemo(
-    () => getRecommendationsForQuote(lineItems),
-    [lineItems]
-  );
+  const filteredProducts = useMemo(() => {
+    return products.filter((p) => {
+      const matchesSearch =
+        p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+        p.sku.toLowerCase().includes(productSearch.toLowerCase());
+      const matchesCat =
+        selectedCategory === 'all' || p.category?.name === selectedCategory;
+      return matchesSearch && matchesCat;
+    });
+  }, [products, productSearch, selectedCategory]);
 
-  // Line item handlers
+  // 5. Line Item Actions
   const handleQuantityChange = (index: number, newQty: number) => {
     if (newQty < 1) return;
-    const item = lineItems[index];
-    const product = INITIAL_PRODUCTS.find((p) => p.id === item.productId);
-    if (!product) return;
-
-    const updated = [...lineItems];
-    updated[index] = calculateLineItem(product, newQty, item.discountPercent);
-    setLineItems(updated);
+    setLineItems((prev) => {
+      const updated = [...prev];
+      const item = updated[index];
+      const gross = item.unitPrice * newQty;
+      const discAmt = (gross * item.discountPercent) / 100;
+      updated[index] = {
+        ...item,
+        quantity: newQty,
+        grossAmount: gross,
+        discountAmount: discAmt,
+        netAmount: gross - discAmt,
+      };
+      return updated;
+    });
   };
 
   const handleDiscountChange = (index: number, newDiscount: number) => {
-    const item = lineItems[index];
-    const product = INITIAL_PRODUCTS.find((p) => p.id === item.productId);
-    if (!product) return;
-
-    const updated = [...lineItems];
-    updated[index] = calculateLineItem(product, item.quantity, newDiscount);
-    setLineItems(updated);
+    const clampedDiscount = Math.min(100, Math.max(0, newDiscount));
+    setLineItems((prev) => {
+      const updated = [...prev];
+      const item = updated[index];
+      const discAmt = (item.grossAmount * clampedDiscount) / 100;
+      updated[index] = {
+        ...item,
+        discountPercent: clampedDiscount,
+        discountAmount: discAmt,
+        netAmount: item.grossAmount - discAmt,
+      };
+      return updated;
+    });
   };
 
   const handleRemoveLine = (index: number) => {
-    setLineItems(lineItems.filter((_, i) => i !== index));
+    setLineItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleAddProductToQuote = (product: Product, quantity = 1, discount = 0) => {
-    // Check if already in line items
-    const existingIndex = lineItems.findIndex((i) => i.productId === product.id);
+  const handleAddProduct = (product: BackendProductSummary) => {
+    const existingIndex = lineItems.findIndex((l) => l.product.id === product.id);
     if (existingIndex >= 0) {
-      handleQuantityChange(existingIndex, lineItems[existingIndex].quantity + quantity);
+      handleQuantityChange(existingIndex, lineItems[existingIndex].quantity + 1);
     } else {
-      const newLine = calculateLineItem(product, quantity, discount);
-      setLineItems([...lineItems, newLine]);
+      const unitPrice = parseFloat(String(product.basePrice)) || 0;
+      const gross = unitPrice * 1;
+      const discAmt = 0;
+      setLineItems((prev) => [
+        ...prev,
+        {
+          product,
+          quantity: 1,
+          discountPercent: 0,
+          unitPrice,
+          grossAmount: gross,
+          discountAmount: discAmt,
+          netAmount: gross - discAmt,
+        },
+      ]);
     }
     setIsProductModalOpen(false);
   };
 
-  // Submit Handler
-  const handleSubmit = (action: 'submit' | 'draft') => {
-    const quoteId = `Q-${Math.floor(1000 + Math.random() * 9000)}`;
+  // 6. Computed Totals
+  const subtotal = useMemo(
+    () => lineItems.reduce((sum, item) => sum + item.grossAmount, 0),
+    [lineItems]
+  );
 
-    const newQuote: Quotation = {
-      id: quoteId,
-      dealId: preselectedDealId || undefined,
-      dealTitle: preselectedDealId
-        ? deals.find((d) => d.id === preselectedDealId)?.title
-        : `${selectedCustomer.name} CPQ Package`,
-      customerId: selectedCustomer.id,
-      customerName: selectedCustomer.name,
-      customerTier: selectedCustomer.tier,
-      createdAt: new Date().toISOString(),
-      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      salesRepName: 'Riya Patel',
-      paymentTerms,
-      status: action === 'draft' ? 'draft' : 'pending_approval',
-      lineItems,
-      ...financialsAndGovernance,
-      fulfillmentStatus: 'allocation_pending',
-      warehouses: [
-        {
-          warehouseId: 'WH-MUM',
-          warehouseName: 'Mumbai Central Logistics Hub',
-          city: 'Mumbai',
-          itemsCount: Math.ceil(lineItems.reduce((acc, i) => acc + i.quantity, 0) * 0.6),
-          status: 'reserved',
-        },
-        {
-          warehouseId: 'WH-BLR',
-          warehouseName: 'Bengaluru Tech Logistics Depot',
-          city: 'Bengaluru',
-          itemsCount: Math.floor(lineItems.reduce((acc, i) => acc + i.quantity, 0) * 0.4),
-          status: 'reserved',
-        },
-      ],
-      billingMilestones: [
-        {
-          id: 'M-1',
-          title: 'Contract Signing Advance (50%)',
-          percentage: 50,
-          amount: Math.round(financialsAndGovernance.netTotal * 0.5),
-          status: 'pending',
-          dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        },
-        {
-          id: 'M-2',
-          title: 'Delivery & Commissioning Signoff (50%)',
-          percentage: 50,
-          amount: Math.round(financialsAndGovernance.netTotal * 0.5),
-          status: 'pending',
-          dueDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        },
-      ],
-      negotiationEntries: [],
-    };
+  const totalDiscount = useMemo(
+    () => lineItems.reduce((sum, item) => sum + item.discountAmount, 0),
+    [lineItems]
+  );
 
-    quotationStore.createOrUpdateQuotation(newQuote);
+  const netTotal = subtotal - totalDiscount;
 
-    if (action === 'submit') {
-      quotationStore.submitForApproval(quoteId);
+  const averageDiscountPercent = subtotal > 0 ? (totalDiscount / subtotal) * 100 : 0;
+
+  // Max line discount to determine governance path
+  const maxLineDiscount = useMemo(
+    () => (lineItems.length > 0 ? Math.max(...lineItems.map((i) => i.discountPercent)) : 0),
+    [lineItems]
+  );
+
+  const requiresFinanceApproval = maxLineDiscount > 20 || averageDiscountPercent > 20;
+  const requiresManagerApproval = !requiresFinanceApproval && (maxLineDiscount > 10 || averageDiscountPercent > 10);
+
+  // 7. Mutations
+  const createQuoteMutation = useCreateQuotationMutation();
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+
+  const handleSaveQuotation = async (action: 'draft' | 'submit') => {
+    if (!selectedCustomerId) {
+      setSubmissionError('Please select a customer.');
+      return;
+    if (!defaultPriceList?.id) {
+      setSubmissionError('No active commercial price list found in system.');
+      return;
     }
 
-    // Persist to backend PostgreSQL database when authenticated
-    const token = getAccessToken();
-    if (token) {
-      (async () => {
-        try {
-          const custRes = await apiClient.get('/customers');
-          const serverCustomers = custRes.data?.data || [];
-          const plRes = await apiClient.get('/price-lists');
-          const serverPriceLists = plRes.data?.data || [];
-          const prodRes = await apiClient.get('/products');
-          const serverProducts = prodRes.data?.data || [];
-
-          if (serverCustomers.length > 0 && serverPriceLists.length > 0) {
-            const matchedCust =
-              serverCustomers.find((c: any) =>
-                c.companyName.toLowerCase().includes(selectedCustomer.name.toLowerCase())
-              ) || serverCustomers[0];
-            const defaultPl = serverPriceLists[0];
-
-            const createRes = await apiClient.post('/quotations', {
-              customerId: matchedCust.id,
-              priceListId: defaultPl.id,
-              issueDate: new Date().toISOString().split('T')[0],
-              expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              notes: `Quotation for ${selectedCustomer.name} (${financialsAndGovernance.averageDiscountPercent.toFixed(1)}% discount)`,
-            });
-
-            const backendQuoteId = createRes.data?.data?.id;
-            if (backendQuoteId && serverProducts.length > 0) {
-              for (const item of lineItems) {
-                const matchedProd =
-                  serverProducts.find((p: any) => p.name.toLowerCase() === item.name.toLowerCase()) ||
-                  serverProducts[0];
-                await apiClient.post(`/quotations/${backendQuoteId}/items`, {
-                  productId: matchedProd.id,
-                  quantity: item.quantity,
-                  discountPercent: item.discountPercent.toFixed(2),
-                });
-              }
-
-              if (action === 'submit') {
-                await apiClient.post(`/quotations/${backendQuoteId}/submit`, {
-                  notes: `Quotation submitted with ${financialsAndGovernance.averageDiscountPercent.toFixed(1)}% discount for manager review`,
-                });
-              }
-            }
-          }
-        } catch (backendErr) {
-          console.warn('Backend quote submission synchronization notice:', backendErr);
-        }
-      })();
+    if (lineItems.length === 0) {
+      setSubmissionError('Please add at least one line item to the quotation.');
+      return;
     }
 
-    navigate(`/quotations/${quoteId}`);
+    setSubmissionError(null);
+    setIsSubmitting(true);
+
+    try {
+      // Atomic single-request quotation creation with items & optional approval submission
+      const createdQuote = await createQuoteMutation.mutateAsync({
+        customerId: selectedCustomerId,
+        priceListId: defaultPriceList.id,
+        issueDate,
+        expiryDate,
+        notes: notes.trim() || undefined,
+        currency: 'INR',
+        items: lineItems.map((item) => ({
+          productId: item.product.id,
+          quantity: item.quantity,
+          discountPercent: item.discountPercent,
+        })),
+        submitForApproval: action === 'submit',
+        submitNotes: action === 'submit' ? notes.trim() || 'Submitting for discount governance review' : undefined,
+      });
+
+      // Navigate to quotation detail page
+      navigate(`/quotations/${createdQuote.id}`);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        (err as Error)?.message ||
+        'Failed to save quotation. Please verify your inputs.';
+      setSubmissionError(msg);
+      setIsSubmitting(false);
+    }
   };
 
-  const filteredCatalog = INITIAL_PRODUCTS.filter((p) => {
-    if (selectedCategoryFilter === 'all') return true;
-    return p.category === selectedCategoryFilter;
-  });
+  const isLoading = isCustomersLoading || isProductsLoading || isPriceListsLoading;
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center p-12 text-center">
+        <RefreshCw className="h-9 w-9 animate-spin text-[#3568ed] mb-3" />
+        <h3 className="text-base font-bold text-[#17213a]">Loading CPQ Engine &amp; Catalogs...</h3>
+        <p className="text-xs text-[#71809f] mt-1">Retrieving real customer accounts, price books, and products.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200">
@@ -244,478 +285,333 @@ export const QuoteBuilderPage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/quotations')}
             leftIcon={<ArrowLeft className="h-4 w-4" />}
           >
-            Back
+            Cancel
           </Button>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-[#17213a]">
-              Configure Price & Quote (CPQ) Builder
+              New CPQ Quotation
             </h1>
-            <p className="mt-0.5 text-xs text-[#71809f]">
-              Build governed quotes with real-time margin modeling, category discount ceilings, and cross-sell guidance.
+            <p className="text-xs text-[#59657d] mt-0.5">
+              Build and govern commercial pricing for customer accounts.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <Button
-            variant="outline"
-            onClick={() => handleSubmit('draft')}
+            variant="secondary"
+            disabled={isSubmitting}
+            onClick={() => handleSaveQuotation('draft')}
           >
-            Save as Draft
+            {isSubmitting ? 'Creating quotation...' : 'Save as Draft'}
           </Button>
           <Button
             variant="primary"
-            onClick={() => handleSubmit('submit')}
-            leftIcon={<CheckCircle2 className="h-4 w-4" />}
+            leftIcon={isSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            disabled={isSubmitting || lineItems.length === 0}
+            onClick={() => handleSaveQuotation('submit')}
           >
-            {financialsAndGovernance.governanceLevel === 'auto_approved'
-              ? 'Finalize & Auto-Approve'
-              : 'Submit for Governance Approval'}
+            {isSubmitting ? 'Creating quotation...' : 'Submit for Approval'}
           </Button>
         </div>
       </div>
 
-      {/* Customer & Account Details Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-[#3568ed]" />
-            <CardTitle>Customer Account & Governance Tier</CardTitle>
-          </div>
-          <Badge
-            variant={
-              selectedCustomer.tier === 'Gold'
-                ? 'gold'
-                : selectedCustomer.tier === 'Silver'
-                ? 'silver'
-                : 'bronze'
-            }
-          >
-            {selectedCustomer.tier} Tier Account
-          </Badge>
-        </CardHeader>
+      {/* Submission Error Banner */}
+      {submissionError && (
+        <div className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
+          <span>{submissionError}</span>
+        </div>
+      )}
 
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Customer Dropdown */}
-            <div>
-              <label className="block text-xs font-semibold text-[#475467] mb-1.5">
-                Select Customer Account
-              </label>
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="w-full rounded-xl border border-[#d0d5dd] bg-white p-2.5 text-xs font-semibold text-[#17213a] focus:border-[#3568ed] focus:outline-none"
-              >
-                {INITIAL_CUSTOMERS.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.tier} Tier)
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Procurement Contact */}
-            <div>
-              <span className="block text-xs font-semibold text-[#475467] mb-1">
-                Procurement Contact
-              </span>
-              <p className="text-xs font-bold text-[#17213a] mt-2">
-                {selectedCustomer.contactPerson}
-              </p>
-              <p className="text-[11px] text-[#71809f]">{selectedCustomer.email}</p>
-            </div>
-
-            {/* Standard Discount Allowance */}
-            <div>
-              <span className="block text-xs font-semibold text-[#475467] mb-1">
-                Tier Discount Policy
-              </span>
-              <div className="mt-1 flex items-center gap-2">
-                <span className="text-base font-bold text-emerald-600">
-                  Up to {selectedCustomer.discountAllowancePercent}%
-                </span>
-                <span className="text-[11px] text-[#71809f]">without escalation</span>
-              </div>
-              <p className="text-[10px] text-gray-400 mt-0.5">Credit Line: {formatINR(selectedCustomer.creditLimit)}</p>
-            </div>
-
-            {/* Payment Terms */}
-            <div>
-              <label className="block text-xs font-semibold text-[#475467] mb-1.5">
-                Payment Terms
-              </label>
-              <select
-                value={paymentTerms}
-                onChange={(e) => setPaymentTerms(e.target.value as 'Net 30' | 'Net 45' | 'Net 60')}
-                className="w-full rounded-xl border border-[#d0d5dd] bg-white p-2.5 text-xs font-semibold text-[#17213a] focus:border-[#3568ed] focus:outline-none"
-              >
-                <option value="Net 30">Net 30 Days (Standard)</option>
-                <option value="Net 45">Net 45 Days (Silver/Gold)</option>
-                <option value="Net 60">Net 60 Days (Gold Only / Finance Signoff)</option>
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Main Grid: Products Table & Live Financial Summary */}
-      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.6fr]">
+      {/* Two-Column Layout */}
+      <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+        {/* Left Column: Customer Selection & Line Items */}
         <div className="space-y-6">
-          {/* Line Items Table */}
+          {/* Customer Selection Card */}
           <Card>
             <CardHeader>
-              <div>
-                <CardTitle>Quote Line Items</CardTitle>
-                <p className="mt-0.5 text-xs text-[#71809f]">
-                  Combine one-time hardware, recurring subscriptions, and engineering services.
-                </p>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4.5 w-4.5 text-[#3568ed]" />
+                <CardTitle>Customer &amp; Account Selection</CardTitle>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                leftIcon={<Plus className="h-4 w-4" />}
-                onClick={() => setIsProductModalOpen(true)}
-              >
-                Add Product / Service
-              </Button>
             </CardHeader>
-
-            <CardContent>
-              {lineItems.length === 0 ? (
-                <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 p-6 text-center">
-                  <Package className="h-8 w-8 text-gray-300 mb-2" />
-                  <p className="text-xs font-semibold text-gray-700">No products added yet</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    Click &ldquo;Add Product / Service&rdquo; to browse the catalog.
-                  </p>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => setIsProductModalOpen(true)}
-                  >
-                    Browse Catalog
-                  </Button>
+            <CardContent className="space-y-4">
+              {customers.length === 0 ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
+                  No active customer accounts found. Please verify backend customer seeding.
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {lineItems.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className={`rounded-2xl border p-4 transition-all ${
-                        item.isDiscountExceeded
-                          ? 'border-amber-300 bg-amber-50/20'
-                          : 'border-[#e7ebf7] bg-white'
-                      }`}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#475467] mb-1.5">
+                      Select Customer
+                    </label>
+                    <select
+                      value={selectedCustomerId}
+                      onChange={(e) => setSelectedCustomerId(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 bg-white p-2.5 text-xs text-[#17213a] focus:border-[#3568ed] focus:outline-none"
                     >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        {/* Item Details */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-[#17213a]">{item.name}</span>
-                            <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 uppercase">
-                              {item.billingType === 'recurring' ? `${item.billingPeriod} SaaS` : 'One-Time'}
-                            </span>
-                            <span className="text-[11px] text-gray-400">SKU: {item.sku}</span>
-                          </div>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.companyName} {c.customerTier ? `(${c.customerTier.name})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-[#59657d]">
-                            <span>List Price: <strong>{formatINR(item.unitPrice)}</strong></span>
-                            <span>Cost: <strong>{formatINR(item.costPrice)}</strong></span>
-                            <span className="text-emerald-700 font-semibold">
-                              Margin: {formatPercent(item.lineMarginPercent)}
-                            </span>
-                          </div>
+                  {selectedCustomer && (
+                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-[#17213a]">{selectedCustomer.companyName}</span>
+                        {selectedCustomer.customerTier && (
+                          <Badge variant="gold" size="sm">
+                            {selectedCustomer.customerTier.name}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-gray-500 text-[11px] truncate">
+                        Contact: {selectedCustomer.contactName || selectedCustomer.email}
+                      </p>
+                      <p className="text-gray-400 text-[10px]">
+                        ID: {selectedCustomer.id}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
-                          {/* Discount Ceiling Alert on Line Item */}
-                          {item.isDiscountExceeded && (
-                            <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-100/70 px-2.5 py-1 text-[11px] font-semibold text-amber-900 border border-amber-300">
-                              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                              <span>
-                                Exceeds {item.category.replace('_', ' ')} ceiling ({item.discountCeiling}%). Triggers manager approval.
+              {/* Dates & Notes */}
+              <div className="grid gap-4 sm:grid-cols-2 border-t border-gray-100 pt-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#475467] mb-1">
+                    Issue Date
+                  </label>
+                  <input
+                    type="date"
+                    value={issueDate}
+                    onChange={(e) => setIssueDate(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 p-2 text-xs text-[#17213a] focus:border-[#3568ed] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#475467] mb-1">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 p-2 text-xs text-[#17213a] focus:border-[#3568ed] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#475467] mb-1">
+                  Contract / Proposal Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add commercial justification or notes..."
+                  className="w-full rounded-xl border border-gray-200 p-2 text-xs text-[#17213a] placeholder:text-gray-400 focus:border-[#3568ed] focus:outline-none"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Line Items Card */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-2">
+                  <Package className="h-4.5 w-4.5 text-[#3568ed]" />
+                  <CardTitle>Quotation Line Items</CardTitle>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<Plus className="h-3.5 w-3.5" />}
+                  onClick={() => setIsProductModalOpen(true)}
+                >
+                  Add Product
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {lineItems.length === 0 ? (
+                <div className="p-8 text-center text-gray-400">
+                  <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  <p className="text-xs font-semibold text-gray-600">No products added yet</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Click &ldquo;Add Product&rdquo; above to select items from your catalog.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-[#fbfcfe] px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-[#8491aa]">
+                        <th className="py-2.5 px-4 font-semibold">Product / SKU</th>
+                        <th className="py-2.5 font-semibold text-right">Unit Price</th>
+                        <th className="py-2.5 font-semibold text-center w-28">Quantity</th>
+                        <th className="py-2.5 font-semibold text-center w-24">Discount %</th>
+                        <th className="py-2.5 font-semibold text-right">Net Amount</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {lineItems.map((item, idx) => (
+                        <tr key={`${item.product.id}-${idx}`} className="hover:bg-gray-50/50">
+                          <td className="py-3 px-4">
+                            <p className="font-semibold text-[#17213a]">{item.product.name}</p>
+                            <span className="text-[10px] text-gray-400">SKU: {item.product.sku}</span>
+                          </td>
+                          <td className="py-3 text-right font-medium text-[#17213a]">
+                            {formatINR(item.unitPrice)}
+                          </td>
+                          <td className="py-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleQuantityChange(idx, item.quantity - 1)}
+                                className="h-6 w-6 rounded border border-gray-200 text-gray-600 hover:bg-gray-100 transition"
+                              >
+                                -
+                              </button>
+                              <span className="w-8 text-center font-bold text-[#17213a]">
+                                {item.quantity}
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => handleQuantityChange(idx, item.quantity + 1)}
+                                className="h-6 w-6 rounded border border-gray-200 text-gray-600 hover:bg-gray-100 transition"
+                              >
+                                +
+                              </button>
                             </div>
-                          )}
-                        </div>
-
-                        {/* Controls: Quantity & Discount Input */}
-                        <div className="flex items-center gap-3">
-                          {/* Quantity */}
-                          <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Qty
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(e) => handleQuantityChange(idx, parseInt(e.target.value) || 1)}
-                              className="w-16 rounded-lg border border-gray-300 p-1.5 text-center text-xs font-bold text-[#17213a] focus:border-[#3568ed] focus:outline-none"
-                            />
-                          </div>
-
-                          {/* Discount % */}
-                          <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Discount %
-                            </label>
-                            <div className="relative">
+                          </td>
+                          <td className="py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
                               <input
                                 type="number"
                                 min="0"
                                 max="100"
                                 value={item.discountPercent}
-                                onChange={(e) => handleDiscountChange(idx, parseFloat(e.target.value) || 0)}
-                                className={`w-20 rounded-lg border p-1.5 pr-6 text-center text-xs font-bold focus:outline-none ${
-                                  item.isDiscountExceeded
-                                    ? 'border-amber-400 bg-amber-50 text-amber-900'
-                                    : 'border-gray-300 text-[#17213a] focus:border-[#3568ed]'
-                                }`}
+                                onChange={(e) =>
+                                  handleDiscountChange(idx, parseFloat(e.target.value) || 0)
+                                }
+                                className="w-14 rounded border border-gray-200 p-1 text-center font-semibold text-[#17213a] focus:border-[#3568ed] focus:outline-none"
                               />
-                              <Percent className="h-3 w-3 text-gray-400 absolute right-2 top-2.5" />
+                              <span className="text-gray-400 text-xs">%</span>
                             </div>
-                          </div>
-
-                          {/* Line Total */}
-                          <div className="text-right min-w-[100px]">
-                            <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Line Total
-                            </span>
-                            <span className="text-sm font-bold text-[#17213a] block">
-                              {formatINR(item.lineTotal)}
-                            </span>
-                          </div>
-
-                          {/* Delete Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLine(idx)}
-                            className="mt-4 rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
-                            title="Remove item"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                          </td>
+                          <td className="py-3 text-right font-bold text-[#17213a]">
+                            {formatINR(item.netAmount)}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLine(idx)}
+                              className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
+                              title="Remove item"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>
           </Card>
-
-          {/* Upsell / Cross-Sell Recommendation Engine */}
-          {upsellRecommendations.length > 0 && (
-            <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/30 p-5 shadow-xs">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
-                  <Sparkles className="h-4 w-4" />
-                </span>
-                <div>
-                  <h3 className="text-sm font-bold text-indigo-950">
-                    Intelligent Upsell & Cross-Sell Recommendations
-                  </h3>
-                  <p className="text-xs text-indigo-700">
-                    High-margin attachments matching this customer profile and line items
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {upsellRecommendations.map((rec) => (
-                  <div
-                    key={rec.product.id}
-                    className="flex flex-col justify-between rounded-xl border border-indigo-100 bg-white p-3.5 shadow-2xs hover:border-indigo-300 transition"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-xs font-bold text-[#17213a]">
-                          {rec.product.name}
-                        </span>
-                        <Badge variant="success" size="sm">
-                          +{rec.expectedMarginBoost}% Margin
-                        </Badge>
-                      </div>
-                      <p className="mt-1.5 text-[11px] text-[#59657d] leading-relaxed">
-                        {rec.rationale}
-                      </p>
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between border-t border-indigo-50 pt-2.5">
-                      <div>
-                        <span className="text-[10px] text-gray-400 block uppercase">Price</span>
-                        <span className="text-xs font-bold text-[#17213a]">
-                          {formatINR(rec.product.basePrice)}
-                        </span>
-                      </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        leftIcon={<Plus className="h-3 w-3" />}
-                        onClick={() => handleAddProductToQuote(rec.product, 1, 0)}
-                      >
-                        Add to Quote
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Live Financial Summary & Risk Governance Sidebar */}
+        {/* Right Column: Commercial Summary & Governance Feedback */}
         <div className="space-y-6">
-          {/* Financial Summary Card */}
+          {/* Pricing & Commercial Totals */}
           <Card>
             <CardHeader>
-              <CardTitle>Deal Financial Summary</CardTitle>
+              <CardTitle>Commercial Pricing Summary</CardTitle>
             </CardHeader>
-
-            <CardContent>
-              <div className="space-y-3 text-xs">
-                <div className="flex justify-between py-1 border-b border-gray-100">
-                  <span className="text-gray-500">Gross List Total</span>
-                  <span className="font-semibold text-gray-800">{formatINR(financialsAndGovernance.grossTotal)}</span>
-                </div>
-
-                <div className="flex justify-between py-1 border-b border-gray-100">
-                  <span className="text-gray-500">Total Discounts Applied</span>
-                  <span className="font-semibold text-red-600">
-                    - {formatINR(financialsAndGovernance.totalDiscountAmount)} ({formatPercent(financialsAndGovernance.averageDiscountPercent)})
-                  </span>
-                </div>
-
-                {financialsAndGovernance.recurringARRSubtotal > 0 && (
-                  <div className="flex justify-between py-1 border-b border-gray-100 bg-blue-50/50 p-2 rounded-lg">
-                    <span className="text-blue-800 font-medium">Annual Recurring (ARR)</span>
-                    <span className="font-bold text-blue-800">{formatINR(financialsAndGovernance.recurringARRSubtotal)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between py-2 border-b-2 border-gray-200">
-                  <span className="text-sm font-bold text-[#17213a]">Net Total Value</span>
-                  <span className="text-base font-bold text-[#3568ed]">
-                    {formatINR(financialsAndGovernance.netTotal)}
-                  </span>
-                </div>
-
-                {/* Margin Health Bar */}
-                <div className="rounded-xl bg-[#f8faff] border border-[#eef2fc] p-3.5 mt-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-[#17213a]">Gross Profit Margin</span>
-                    <span
-                      className={`text-sm font-bold ${
-                        financialsAndGovernance.grossMarginPercent >= 30
-                          ? 'text-emerald-600'
-                          : financialsAndGovernance.grossMarginPercent >= 20
-                          ? 'text-amber-600'
-                          : 'text-red-600'
-                      }`}
-                    >
-                      {formatPercent(financialsAndGovernance.grossMarginPercent)}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 h-2.5 w-full rounded-full bg-gray-200 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        financialsAndGovernance.grossMarginPercent >= 30
-                          ? 'bg-emerald-500'
-                          : financialsAndGovernance.grossMarginPercent >= 20
-                          ? 'bg-amber-500'
-                          : 'bg-red-500'
-                      }`}
-                      style={{
-                        width: `${Math.min(100, Math.max(0, financialsAndGovernance.grossMarginPercent))}%`,
-                      }}
-                    />
-                  </div>
-
-                  <div className="mt-2 flex justify-between text-[10px] text-gray-400">
-                    <span>COGS: {formatINR(financialsAndGovernance.totalCost)}</span>
-                    <span>Gross Profit: {formatINR(financialsAndGovernance.grossProfit)}</span>
-                  </div>
-                </div>
+            <CardContent className="space-y-3.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500">Gross Subtotal:</span>
+                <span className="font-semibold text-[#17213a]">{formatINR(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500">Total Discount:</span>
+                <span className="font-semibold text-amber-600">
+                  -{formatINR(totalDiscount)} ({formatPercent(averageDiscountPercent)})
+                </span>
+              </div>
+              <div className="border-t border-gray-100 pt-3 flex items-center justify-between text-sm">
+                <span className="font-bold text-[#17213a]">Net Total Amount:</span>
+                <span className="text-lg font-bold text-[#3568ed]">{formatINR(netTotal)}</span>
               </div>
             </CardContent>
           </Card>
 
-          {/* Discount Governance & Risk Assessment Card */}
+          {/* Discount Governance Feedback */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-[#3568ed]" />
-                <CardTitle>Governance & Approvals</CardTitle>
+                <ShieldCheck className="h-4.5 w-4.5 text-[#3568ed]" />
+                <CardTitle>Discount Governance Preview</CardTitle>
               </div>
             </CardHeader>
-
-            <CardContent>
-              {financialsAndGovernance.governanceLevel === 'auto_approved' ? (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900">
-                  <div className="flex items-center gap-2 font-bold text-emerald-800">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    <span>Auto-Approved within Rep Authority</span>
+            <CardContent className="space-y-3">
+              {requiresFinanceApproval ? (
+                <div className="rounded-xl border border-red-200 bg-red-50/60 p-3 text-xs text-red-900 space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-red-800">
+                    <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+                    <span>Finance &amp; Operations Signoff Required</span>
                   </div>
-                  <p className="mt-1 text-[11px] text-emerald-700">
-                    All discounts are within category ceilings and customer tier policy. Margin is healthy (&gt; 30%).
+                  <p className="text-[11px] text-red-700 leading-relaxed">
+                    Discount exceeds 20%. Submitting will route through Sales Manager and VP of Finance approval chains.
                   </p>
                 </div>
-              ) : financialsAndGovernance.governanceLevel === 'requires_manager' ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+              ) : requiresManagerApproval ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-900 space-y-1">
                   <div className="flex items-center gap-2 font-bold text-amber-800">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    <span>Requires Sales Manager Approval</span>
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>Sales Manager Approval Required</span>
                   </div>
-                  <p className="mt-1 text-[11px] text-amber-700">
-                    Assigned Approver: <strong>Vikram Mehta (Sales Director)</strong>
+                  <p className="text-[11px] text-amber-700 leading-relaxed">
+                    Discount is between 11%–20%. Requires Sales Director review before customer delivery.
                   </p>
-                  <ul className="mt-2 space-y-1 list-disc list-inside text-[11px] text-amber-800">
-                    {financialsAndGovernance.governanceReasons.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
                 </div>
               ) : (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-900">
-                  <div className="flex items-center gap-2 font-bold text-red-800">
-                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                    <span>Requires Manager + Finance Approval</span>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900 space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-emerald-800">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>Auto-Approval Eligible</span>
                   </div>
-                  <p className="mt-1 text-[11px] text-red-700">
-                    High discount or sub-20% margin triggers dual escalation to <strong>Vikram Mehta</strong> and <strong>Ananya Iyer (Finance)</strong>.
+                  <p className="text-[11px] text-emerald-700 leading-relaxed">
+                    Discounts are within pre-approved delegation threshold (&le; 10%).
                   </p>
-                  <ul className="mt-2 space-y-1 list-disc list-inside text-[11px] text-red-800">
-                    {financialsAndGovernance.governanceReasons.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
                 </div>
               )}
 
-              {/* Multi-Warehouse Readiness Insight */}
-              <div className="mt-4 border-t border-gray-100 pt-3 text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-[#17213a] mb-2">
-                  <Layers className="h-4 w-4 text-blue-600" />
-                  <span>Fulfillment Allocation Preview</span>
+              <div className="rounded-xl bg-gray-50 p-3 text-[11px] text-gray-500 space-y-1 border border-gray-100">
+                <div className="flex justify-between">
+                  <span>Standard Rep Delegation:</span>
+                  <strong className="text-gray-700">Up to 10.0%</strong>
                 </div>
-                <div className="space-y-1.5 text-[11px] text-gray-600">
-                  <div className="flex justify-between">
-                    <span>Mumbai Central Logistics</span>
-                    <span className="font-semibold text-emerald-600">In Stock</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Bengaluru Tech Logistics</span>
-                    <span className="font-semibold text-emerald-600">In Stock</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Delhi Fulfillment Depot</span>
-                    <span className="font-semibold text-emerald-600">In Stock</span>
-                  </div>
+                <div className="flex justify-between">
+                  <span>Manager Delegation:</span>
+                  <strong className="text-gray-700">10.1% – 20.0%</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Finance &amp; Executive:</span>
+                  <strong className="text-gray-700">&gt; 20.0%</strong>
                 </div>
               </div>
             </CardContent>
@@ -723,79 +619,90 @@ export const QuoteBuilderPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Catalog Product Selection Modal */}
+      {/* Product Selection Modal */}
       <Modal
         isOpen={isProductModalOpen}
         onClose={() => setIsProductModalOpen(false)}
-        title="Add Product or Subscription to Quote"
-        description="Select from hardware, SaaS subscriptions, or professional engineering packages"
-        maxWidth="3xl"
+        title="Select Product from Catalog"
+        description="Choose real items from your product master to add to this quotation."
+        maxWidth="lg"
       >
         <div className="space-y-4">
-          {/* Category Filter Pills */}
-          <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
-            {[
-              { id: 'all', label: 'All Catalog Items' },
-              { id: 'hardware', label: 'Hardware Equipment' },
-              { id: 'software', label: 'Software & Platform' },
-              { id: 'cloud_subscription', label: 'Cloud & AI' },
-              { id: 'professional_services', label: 'Engineering Services' },
-            ].map((cat) => (
+          {/* Search & Categories */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex h-9 w-full max-w-xs items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 text-gray-500 focus-within:border-[#3568ed] focus-within:bg-white transition">
+              <Search className="h-3.5 w-3.5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search products or SKU..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                className="w-full bg-transparent text-xs text-[#17213a] placeholder:text-gray-400 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 overflow-x-auto pb-1">
               <button
-                key={cat.id}
                 type="button"
-                onClick={() => setSelectedCategoryFilter(cat.id)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
-                  selectedCategoryFilter === cat.id
-                    ? 'bg-[#3568ed] text-white font-semibold'
+                onClick={() => setSelectedCategory('all')}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  selectedCategory === 'all'
+                    ? 'bg-[#3568ed] text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                {cat.label}
+                All
               </button>
-            ))}
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                    selectedCategory === cat
+                      ? 'bg-[#3568ed] text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Product Items List */}
-          <div className="space-y-2.5 max-h-[55vh] overflow-y-auto pr-1">
-            {filteredCatalog.map((prod) => (
-              <div
-                key={prod.id}
-                className="flex items-center justify-between rounded-xl border border-gray-200 p-3.5 hover:border-[#3568ed] hover:bg-[#f8faff] transition"
-              >
-                <div className="flex-1 min-w-0 pr-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-[#17213a]">{prod.name}</span>
-                    <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 uppercase">
-                      {prod.billingType}
-                    </span>
-                    <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-medium">
-                      Max Disc: {prod.discountCeilingPercent}%
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[11px] text-gray-500 line-clamp-1">{prod.description}</p>
-                </div>
-
-                <div className="flex items-center gap-4 shrink-0">
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-[#17213a] block">
-                      {formatINR(prod.basePrice)}
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      Cost: {formatINR(prod.costPrice)}
-                    </span>
-                  </div>
-
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => handleAddProductToQuote(prod, 1, 0)}
-                  >
-                    Add
-                  </Button>
-                </div>
+          <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+            {filteredProducts.length === 0 ? (
+              <div className="py-8 text-center text-xs text-gray-400">
+                No products match the selected criteria.
               </div>
-            ))}
+            ) : (
+              filteredProducts.map((prod) => (
+                <div
+                  key={prod.id}
+                  className="flex items-center justify-between rounded-xl border border-gray-200 p-3 hover:border-blue-300 hover:bg-blue-50/20 transition"
+                >
+                  <div>
+                    <h4 className="text-xs font-bold text-[#17213a]">{prod.name}</h4>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      SKU: {prod.sku} • {prod.category?.name || 'General'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-[#17213a]">
+                      {formatINR(parseFloat(String(prod.basePrice)) || 0)}
+                    </span>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleAddProduct(prod)}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </Modal>

@@ -1,6 +1,22 @@
 import { z } from 'zod';
 import { QuotationStatuses } from '../constants/quotationStatus.js';
 
+export const createQuotationItemInputSchema = z.object({
+  productId: z.string().uuid('Invalid product ID'),
+  quantity: z.number().int('Quantity must be an integer').positive('Quantity must be greater than 0'),
+  discountPercent: z
+    .union([z.number().min(0, 'Discount must be >= 0').max(100, 'Discount must be <= 100'), z.string()])
+    .optional()
+    .default(0)
+    .transform((val) => {
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      if (isNaN(num) || num < 0 || num > 100) {
+        throw new Error('Discount percentage must be between 0 and 100');
+      }
+      return num.toFixed(2);
+    }),
+});
+
 export const createQuotationSchema = z
   .object({
     customerId: z.string().uuid('Invalid customer ID'),
@@ -9,6 +25,9 @@ export const createQuotationSchema = z
     expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expiry date must be in YYYY-MM-DD format'),
     notes: z.string().max(2000, 'Notes must not exceed 2000 characters').optional().nullable(),
     currency: z.string().max(10).optional().default('INR'),
+    items: z.array(createQuotationItemInputSchema).optional(),
+    submitForApproval: z.boolean().optional(),
+    submitNotes: z.string().max(1000).optional(),
   })
   .refine(
     (data) => new Date(data.expiryDate) >= new Date(data.issueDate),
