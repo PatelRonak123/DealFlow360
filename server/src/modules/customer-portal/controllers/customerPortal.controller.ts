@@ -25,16 +25,32 @@ export class CustomerPortalController {
     try {
       const customerId = this.getCustomerId(req);
       const userEmail = req.user?.email;
-      const { search, status } = req.query;
-      const data = await this.service.listQuotations(
+      const { search, status, page, limit } = req.query;
+      const result = await this.service.listQuotations(
         {
           search: typeof search === 'string' ? search : undefined,
           status: typeof status === 'string' ? status : undefined,
+          page: page ? Number(page) : undefined,
+          limit: limit ? Number(limit) : undefined,
         },
         customerId,
         userEmail
       );
-      sendSuccess(res, data, 'Quotations retrieved successfully');
+      sendSuccess(
+        res,
+        result.items,
+        'Quotations retrieved successfully',
+        HttpStatus.OK,
+        {
+          page: result.page,
+          limit: result.limit,
+          pageSize: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+          hasNextPage: result.page < result.totalPages,
+          hasPreviousPage: result.page > 1,
+        }
+      );
     } catch (error) {
       next(error);
     }
@@ -93,8 +109,32 @@ export class CustomerPortalController {
     try {
       const customerId = this.getCustomerId(req);
       const userEmail = req.user?.email;
-      const data = await this.service.listOrders(customerId, userEmail);
-      sendSuccess(res, data, 'Orders retrieved successfully');
+      const { search, status, page, limit } = req.query;
+      const result = await this.service.listOrders(
+        {
+          search: typeof search === 'string' ? search : undefined,
+          status: typeof status === 'string' ? status : undefined,
+          page: page ? Number(page) : undefined,
+          limit: limit ? Number(limit) : undefined,
+        },
+        customerId,
+        userEmail
+      );
+      sendSuccess(
+        res,
+        result.items,
+        'Orders retrieved successfully',
+        HttpStatus.OK,
+        {
+          page: result.page,
+          limit: result.limit,
+          pageSize: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+          hasNextPage: result.page < result.totalPages,
+          hasPreviousPage: result.page > 1,
+        }
+      );
     } catch (error) {
       next(error);
     }
@@ -116,8 +156,32 @@ export class CustomerPortalController {
     try {
       const customerId = this.getCustomerId(req);
       const userEmail = req.user?.email;
-      const data = await this.service.listInvoices(customerId, userEmail);
-      sendSuccess(res, data, 'Invoices retrieved successfully');
+      const { search, status, page, limit } = req.query;
+      const result = await this.service.listInvoices(
+        {
+          search: typeof search === 'string' ? search : undefined,
+          status: typeof status === 'string' ? status : undefined,
+          page: page ? Number(page) : undefined,
+          limit: limit ? Number(limit) : undefined,
+        },
+        customerId,
+        userEmail
+      );
+      sendSuccess(
+        res,
+        result.items,
+        'Invoices retrieved successfully',
+        HttpStatus.OK,
+        {
+          page: result.page,
+          limit: result.limit,
+          pageSize: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+          hasNextPage: result.page < result.totalPages,
+          hasPreviousPage: result.page > 1,
+        }
+      );
     } catch (error) {
       next(error);
     }
@@ -160,8 +224,31 @@ export class CustomerPortalController {
     try {
       const customerId = this.getCustomerId(req);
       const userEmail = req.user?.email;
-      const data = await this.service.listPayments(customerId, userEmail);
-      sendSuccess(res, data, 'Payments retrieved successfully');
+      const { search, page, limit } = req.query;
+      const result = await this.service.listPayments(
+        {
+          search: typeof search === 'string' ? search : undefined,
+          page: page ? Number(page) : undefined,
+          limit: limit ? Number(limit) : undefined,
+        },
+        customerId,
+        userEmail
+      );
+      sendSuccess(
+        res,
+        result.items,
+        'Payments retrieved successfully',
+        HttpStatus.OK,
+        {
+          page: result.page,
+          limit: result.limit,
+          pageSize: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+          hasNextPage: result.page < result.totalPages,
+          hasPreviousPage: result.page > 1,
+        }
+      );
     } catch (error) {
       next(error);
     }

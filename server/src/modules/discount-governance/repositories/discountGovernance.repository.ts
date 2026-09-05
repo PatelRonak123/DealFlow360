@@ -44,11 +44,24 @@ export interface PendingApprovalListItem extends QuotationApproval {
   };
 }
 
+interface CachedPendingApprovals {
+  data: { items: PendingApprovalListItem[]; total: number };
+  expiresAt: number;
+}
+
+const pendingApprovalsCache = new Map<string, CachedPendingApprovals>();
+const inFlightPendingApprovals = new Map<string, Promise<{ items: PendingApprovalListItem[]; total: number }>>();
+const PENDING_CACHE_TTL_MS = 15 * 1000; // 15 seconds fast cache
+
 export class DiscountGovernanceRepository {
   private db: Database;
 
   constructor(databaseClient: Database = db) {
     this.db = databaseClient;
+  }
+
+  invalidateCache(): void {
+    pendingApprovalsCache.clear();
   }
 
   async getDiscountEvaluationsByQuotationId(
@@ -112,7 +125,9 @@ export class DiscountGovernanceRepository {
   ): Promise<QuotationApproval[]> {
     if (approvalsData.length === 0) return [];
     const client = trx || this.db;
-    return client.insert(quotationApprovals).values(approvalsData).returning();
+    const created = await client.insert(quotationApprovals).values(approvalsData).returning();
+    this.invalidateCache();
+    return created;
   }
 
   async updateApproval(
@@ -129,6 +144,7 @@ export class DiscountGovernanceRepository {
       })
       .where(eq(quotationApprovals.id, approvalId))
       .returning();
+    this.invalidateCache();
     return updated || null;
   }
 
@@ -149,6 +165,7 @@ export class DiscountGovernanceRepository {
           eq(quotationApprovals.status, ApprovalStatuses.PENDING)
         )
       );
+    this.invalidateCache();
   }
 
   async listPendingApprovals(filters: {
@@ -157,83 +174,111 @@ export class DiscountGovernanceRepository {
     page: number;
     limit: number;
   }): Promise<{ items: PendingApprovalListItem[]; total: number }> {
-    const offset = (filters.page - 1) * filters.limit;
-    const conditions = [];
-
-    if (filters.status) {
-      conditions.push(eq(quotationApprovals.status, filters.status));
+    const cacheKey = JSON.stringify(filters);
+    const cached = pendingApprovalsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
     }
 
-    if (filters.allowedLevels && filters.allowedLevels.length > 0) {
-      conditions.push(inArray(quotationApprovals.approvalLevel, filters.allowedLevels));
+    if (inFlightPendingApprovals.has(cacheKey)) {
+      return inFlightPendingApprovals.get(cacheKey)!;
     }
 
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const fetchPromise = (async () => {
+      try {
+        const offset = (filters.page - 1) * filters.limit;
+        const conditions = [];
 
-    // Total count query
-    const [countResult] = await this.db
-      .select({ total: count() })
-      .from(quotationApprovals)
-      .where(whereClause);
+        if (filters.status) {
+          conditions.push(eq(quotationApprovals.status, filters.status));
+        }
 
-    const total = countResult ? Number(countResult.total) : 0;
+        if (filters.allowedLevels && filters.allowedLevels.length > 0) {
+          conditions.push(inArray(quotationApprovals.approvalLevel, filters.allowedLevels));
+        }
 
-    // Data query with joins
-    const rows = await this.db
-      .select({
-        approval: quotationApprovals,
-        quotation: quotations,
-        customer: customers,
-        createdBy: users,
-      })
-      .from(quotationApprovals)
-      .innerJoin(quotations, eq(quotationApprovals.quotationId, quotations.id))
-      .leftJoin(customers, eq(quotations.customerId, customers.id))
-      .leftJoin(users, eq(quotations.createdBy, users.id))
-      .where(whereClause)
-      .orderBy(desc(quotationApprovals.requestedAt))
-      .limit(filters.limit)
-      .offset(offset);
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const items: PendingApprovalListItem[] = rows.map((row) => {
-      const subtotalNum = Number(row.quotation.subtotal) || 0;
-      const discountAmountNum = Number(row.quotation.discountAmount) || 0;
-      const discountPercent = subtotalNum > 0
-        ? ((discountAmountNum / subtotalNum) * 100).toFixed(1)
-        : '0.0';
+        // Run Count query and Rows query in parallel to eliminate sequential network round trips
+        const countQuery = this.db
+          .select({ total: count() })
+          .from(quotationApprovals)
+          .where(whereClause);
 
-      return {
-        ...row.approval,
-        quotation: {
-          id: row.quotation.id,
-          quotationNumber: row.quotation.quotationNumber,
-          subtotal: row.quotation.subtotal,
-          discountAmount: row.quotation.discountAmount,
-          totalAmount: row.quotation.totalAmount,
-          discountPercent,
-          status: row.quotation.status,
-          notes: row.quotation.notes,
-          currency: row.quotation.currency,
-          customerId: row.quotation.customerId,
-          createdById: row.quotation.createdBy,
-          customer: row.customer
-            ? {
-                id: row.customer.id,
-                companyName: row.customer.companyName,
-                email: row.customer.email,
-              }
-            : undefined,
-          createdBy: row.createdBy
-            ? {
-                id: row.createdBy.id,
-                name: row.createdBy.name,
-                email: row.createdBy.email,
-              }
-            : undefined,
-        },
-      };
-    });
+        const rowsQuery = this.db
+          .select({
+            approval: quotationApprovals,
+            quotation: quotations,
+            customer: customers,
+            createdBy: users,
+          })
+          .from(quotationApprovals)
+          .innerJoin(quotations, eq(quotationApprovals.quotationId, quotations.id))
+          .leftJoin(customers, eq(quotations.customerId, customers.id))
+          .leftJoin(users, eq(quotations.createdBy, users.id))
+          .where(whereClause)
+          .orderBy(desc(quotationApprovals.requestedAt))
+          .limit(filters.limit)
+          .offset(offset);
 
-    return { items, total };
+        const [[countResult], rows] = await Promise.all([countQuery, rowsQuery]);
+
+        const total = countResult ? Number(countResult.total) : 0;
+
+        const items: PendingApprovalListItem[] = rows.map((row) => {
+          const subtotalNum = Number(row.quotation.subtotal) || 0;
+          const discountAmountNum = Number(row.quotation.discountAmount) || 0;
+          const discountPercent = subtotalNum > 0
+            ? ((discountAmountNum / subtotalNum) * 100).toFixed(1)
+            : '0.0';
+
+          return {
+            ...row.approval,
+            quotation: {
+              id: row.quotation.id,
+              quotationNumber: row.quotation.quotationNumber,
+              subtotal: row.quotation.subtotal,
+              discountAmount: row.quotation.discountAmount,
+              totalAmount: row.quotation.totalAmount,
+              discountPercent,
+              status: row.quotation.status,
+              notes: row.quotation.notes,
+              currency: row.quotation.currency,
+              customerId: row.quotation.customerId,
+              createdById: row.quotation.createdBy,
+              customer: row.customer
+                ? {
+                    id: row.customer.id,
+                    companyName: row.customer.companyName,
+                    email: row.customer.email,
+                  }
+                : undefined,
+              createdBy: row.createdBy
+                ? {
+                    id: row.createdBy.id,
+                    name: row.createdBy.name,
+                    email: row.createdBy.email,
+                  }
+                : undefined,
+            },
+          };
+        });
+
+        const result = { items, total };
+        pendingApprovalsCache.set(cacheKey, {
+          data: result,
+          expiresAt: Date.now() + PENDING_CACHE_TTL_MS,
+        });
+
+        return result;
+      } finally {
+        inFlightPendingApprovals.delete(cacheKey);
+      }
+    })();
+
+    inFlightPendingApprovals.set(cacheKey, fetchPromise);
+    return fetchPromise;
   }
 }
+
+export const discountGovernanceRepository = new DiscountGovernanceRepository();

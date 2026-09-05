@@ -10,6 +10,8 @@ import {
   CustomerNotification,
   CustomerProfile,
   NegotiationSubmissionInput,
+  CustomerPortalPaginationParams,
+  CustomerPortalPaginatedResult,
 } from '../types';
 
 export const customerPortalApi = {
@@ -19,12 +21,22 @@ export const customerPortalApi = {
     return response.data.data!;
   },
 
-  // Quotations
-  getQuotations: async (params?: { search?: string; status?: string }): Promise<CustomerQuotationDetail[]> => {
+  // Quotations with Pagination & Search
+  getQuotations: async (
+    params?: CustomerPortalPaginationParams
+  ): Promise<CustomerPortalPaginatedResult<CustomerQuotationDetail>> => {
     const response = await apiClient.get<ApiResponse<CustomerQuotationDetail[]>>('/customer-portal/quotations', {
       params,
     });
-    return response.data.data || [];
+    const items = response.data.data || [];
+    const meta = response.data.meta || {};
+    return {
+      items,
+      total: meta.total ?? items.length,
+      page: meta.page ?? (params?.page || 1),
+      limit: meta.limit ?? (params?.limit || 10),
+      totalPages: (meta.totalPages as number) ?? Math.max(1, Math.ceil((meta.total ?? items.length) / (meta.limit ?? (params?.limit || 10)))),
+    };
   },
 
   getQuotationById: async (id: string): Promise<CustomerQuotationDetail> => {
@@ -52,10 +64,22 @@ export const customerPortalApi = {
     return response.data.data!;
   },
 
-  // Orders
-  getOrders: async (): Promise<CustomerOrder[]> => {
-    const response = await apiClient.get<ApiResponse<CustomerOrder[]>>('/customer-portal/orders');
-    return response.data.data || [];
+  // Orders with Pagination & Search
+  getOrders: async (
+    params?: CustomerPortalPaginationParams
+  ): Promise<CustomerPortalPaginatedResult<CustomerOrder>> => {
+    const response = await apiClient.get<ApiResponse<CustomerOrder[]>>('/customer-portal/orders', {
+      params,
+    });
+    const items = response.data.data || [];
+    const meta = response.data.meta || {};
+    return {
+      items,
+      total: meta.total ?? items.length,
+      page: meta.page ?? (params?.page || 1),
+      limit: meta.limit ?? (params?.limit || 10),
+      totalPages: (meta.totalPages as number) ?? Math.max(1, Math.ceil((meta.total ?? items.length) / (meta.limit ?? (params?.limit || 10)))),
+    };
   },
 
   getOrderById: async (id: string): Promise<CustomerOrder> => {
@@ -63,10 +87,22 @@ export const customerPortalApi = {
     return response.data.data!;
   },
 
-  // Invoices
-  getInvoices: async (): Promise<CustomerInvoice[]> => {
-    const response = await apiClient.get<ApiResponse<CustomerInvoice[]>>('/customer-portal/invoices');
-    return response.data.data || [];
+  // Invoices with Pagination & Search
+  getInvoices: async (
+    params?: CustomerPortalPaginationParams
+  ): Promise<CustomerPortalPaginatedResult<CustomerInvoice>> => {
+    const response = await apiClient.get<ApiResponse<CustomerInvoice[]>>('/customer-portal/invoices', {
+      params,
+    });
+    const items = response.data.data || [];
+    const meta = response.data.meta || {};
+    return {
+      items,
+      total: meta.total ?? items.length,
+      page: meta.page ?? (params?.page || 1),
+      limit: meta.limit ?? (params?.limit || 10),
+      totalPages: (meta.totalPages as number) ?? Math.max(1, Math.ceil((meta.total ?? items.length) / (meta.limit ?? (params?.limit || 10)))),
+    };
   },
 
   getInvoiceById: async (id: string): Promise<CustomerInvoice> => {
@@ -85,10 +121,22 @@ export const customerPortalApi = {
     return response.data.data!;
   },
 
-  // Payments
-  getPayments: async (): Promise<CustomerPayment[]> => {
-    const response = await apiClient.get<ApiResponse<CustomerPayment[]>>('/customer-portal/payments');
-    return response.data.data || [];
+  // Payments with Pagination & Search
+  getPayments: async (
+    params?: CustomerPortalPaginationParams
+  ): Promise<CustomerPortalPaginatedResult<CustomerPayment>> => {
+    const response = await apiClient.get<ApiResponse<CustomerPayment[]>>('/customer-portal/payments', {
+      params,
+    });
+    const items = response.data.data || [];
+    const meta = response.data.meta || {};
+    return {
+      items,
+      total: meta.total ?? items.length,
+      page: meta.page ?? (params?.page || 1),
+      limit: meta.limit ?? (params?.limit || 10),
+      totalPages: (meta.totalPages as number) ?? Math.max(1, Math.ceil((meta.total ?? items.length) / (meta.limit ?? (params?.limit || 10)))),
+    };
   },
 
   // Subscriptions

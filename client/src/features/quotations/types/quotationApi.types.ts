@@ -1,10 +1,16 @@
 export type BackendQuotationStatus =
   | 'DRAFT'
+  | 'PENDING_APPROVAL'
   | 'PENDING_MANAGER_APPROVAL'
   | 'PENDING_FINANCE_APPROVAL'
   | 'APPROVED'
   | 'REJECTED'
   | 'SENT'
+  | 'NEGOTIATION'
+  | 'WON'
+  | 'CONFIRMED'
+  | 'ORDERED'
+  | 'LOST'
   | 'CANCELLED'
   | 'EXPIRED';
 
@@ -33,6 +39,7 @@ export interface BackendProductSummary {
   productType: 'ONE_TIME' | 'RECURRING' | 'SERVICE';
   basePrice: string | number;
   currency: string;
+  stock?: number;
   isActive: boolean;
   category?: {
     id: string;

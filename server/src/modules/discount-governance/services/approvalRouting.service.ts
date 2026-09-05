@@ -22,6 +22,7 @@ import {
 } from './discountEvaluation.service.js';
 import { DiscountGovernanceRepository } from '../repositories/discountGovernance.repository.js';
 import { quotationsRepository } from '../../quotations/repositories/quotations.repository.js';
+import { notificationsService } from '../../notifications/services/notifications.service.js';
 
 export interface QuotationSubmissionResult {
   quotationId: string;
@@ -109,9 +110,11 @@ export class ApprovalRoutingService {
 
     // 6. Execute workflow creation transactionally
     const result = await this.db.transaction(async (trx) => {
-      // Invalidate existing pending approvals and clean previous evaluations
-      await this.repository.invalidatePendingApprovalsByQuotationId(quotationId, trx);
-      await this.repository.deleteDiscountEvaluationsByQuotationId(quotationId, trx);
+      // Invalidate existing pending approvals and clean previous evaluations concurrently
+      await Promise.all([
+        this.repository.invalidatePendingApprovalsByQuotationId(quotationId, trx),
+        this.repository.deleteDiscountEvaluationsByQuotationId(quotationId, trx),
+      ]);
 
       // Persist line-level audit evaluations
       const evaluationRecords: NewQuotationDiscountEvaluation[] = evaluation.lineEvaluations.map(
@@ -212,6 +215,26 @@ export class ApprovalRoutingService {
       };
     });
 
+    if (result.approvalRequired) {
+      notificationsService.emitNotification({
+        title: `Approval Required: ${result.quotationNumber}`,
+        message: `Quotation ${result.quotationNumber} requires discount governance review (${result.approvalRoute}).`,
+        type: 'APPROVAL',
+        status: 'PENDING',
+        targetRoles: [Roles.SALES_MANAGER, Roles.ADMIN],
+        linkUrl: '/approvals',
+      });
+    }
+
+    notificationsService.emitNotification({
+      title: `Quotation ${result.quotationNumber} Submitted`,
+      message: `Quotation ${result.quotationNumber} has been submitted for governance review.`,
+      type: 'QUOTATION',
+      status: 'PENDING',
+      targetUserId: userId,
+      linkUrl: `/quotations/${result.quotationId}`,
+    });
+
     quotationsRepository.invalidateCache();
     return result;
   }
@@ -234,11 +257,14 @@ export class ApprovalRoutingService {
       throw new BadRequestError(`Approval is already in '${approval.status}' state`);
     }
 
-    // Verify associated quotation exists
-    const [quotation] = await this.db
-      .select()
-      .from(quotations)
-      .where(eq(quotations.id, approval.quotationId));
+    // Verify associated quotation exists and fetch all approvals for quotation concurrently
+    const [[quotation], allApprovals] = await Promise.all([
+      this.db
+        .select()
+        .from(quotations)
+        .where(eq(quotations.id, approval.quotationId)),
+      this.repository.getApprovalsByQuotationId(approval.quotationId),
+    ]);
 
     if (!quotation) {
       throw new NotFoundError(`Associated quotation with ID '${approval.quotationId}' was not found`);
@@ -266,7 +292,6 @@ export class ApprovalRoutingService {
     }
 
     // Sequential verification: If sequence > 1, all preceding approvals must be APPROVED
-    const allApprovals = await this.repository.getApprovalsByQuotationId(approval.quotationId);
     const priorIncomplete = allApprovals.find(
       (a) => a.sequence < approval.sequence && a.status !== ApprovalStatuses.APPROVED
     );
@@ -277,42 +302,43 @@ export class ApprovalRoutingService {
       );
     }
 
-    const result = await this.db.transaction(async (trx) => {
-      // 1. Update this approval
-      const updatedApproval = await this.repository.updateApproval(
-        approvalId,
-        {
-          status: ApprovalStatuses.APPROVED,
-          decidedAt: new Date(),
-          decidedById: userId,
-          comments: comments || null,
-        },
-        trx
-      );
+    // Determine next quotation state
+    const remainingPending = allApprovals
+      .filter((a) => a.id !== approvalId && a.status === ApprovalStatuses.PENDING)
+      .sort((a, b) => a.sequence - b.sequence);
 
-      // 2. Determine next quotation state
-      const remainingPending = allApprovals
-        .filter((a) => a.id !== approvalId && a.status === ApprovalStatuses.PENDING)
-        .sort((a, b) => a.sequence - b.sequence);
+    let nextQuotationStatus: string = QuotationStatuses.APPROVED;
 
-      let nextQuotationStatus: string = QuotationStatuses.APPROVED;
-
-      if (remainingPending.length > 0) {
-        const nextStep = remainingPending[0];
-        if (nextStep.approvalLevel === ApprovalLevels.FINANCE) {
-          nextQuotationStatus = QuotationStatuses.PENDING_FINANCE_APPROVAL;
-        } else {
-          nextQuotationStatus = QuotationStatuses.PENDING_APPROVAL;
-        }
+    if (remainingPending.length > 0) {
+      const nextStep = remainingPending[0];
+      if (nextStep.approvalLevel === ApprovalLevels.FINANCE) {
+        nextQuotationStatus = QuotationStatuses.PENDING_FINANCE_APPROVAL;
+      } else {
+        nextQuotationStatus = QuotationStatuses.PENDING_APPROVAL;
       }
+    }
 
-      await trx
-        .update(quotations)
-        .set({
-          status: nextQuotationStatus,
-          updatedAt: new Date(),
-        })
-        .where(eq(quotations.id, approval.quotationId));
+    const result = await this.db.transaction(async (trx) => {
+      // Concurrently update approval and quotation status inside the transaction
+      const [updatedApproval] = await Promise.all([
+        this.repository.updateApproval(
+          approvalId,
+          {
+            status: ApprovalStatuses.APPROVED,
+            decidedAt: new Date(),
+            decidedById: userId,
+            comments: comments || null,
+          },
+          trx
+        ),
+        trx
+          .update(quotations)
+          .set({
+            status: nextQuotationStatus,
+            updatedAt: new Date(),
+          })
+          .where(eq(quotations.id, approval.quotationId)),
+      ]);
 
       return {
         approval: updatedApproval,
@@ -320,6 +346,37 @@ export class ApprovalRoutingService {
         remainingApprovalsCount: remainingPending.length,
       };
     });
+
+    if (result.quotationStatus === QuotationStatuses.APPROVED) {
+      // Fully approved
+      notificationsService.emitNotification({
+        title: `Quotation ${quotation.quotationNumber} Approved`,
+        message: `Quotation has been approved by Sales Governance. Ready for customer acceptance.`,
+        type: 'APPROVAL',
+        status: 'APPROVED',
+        targetCustomerId: quotation.customerId,
+        targetRoles: [Roles.CUSTOMER, Roles.SALES_REP, Roles.ADMIN],
+        linkUrl: `/customer/quotations/${quotation.id}`,
+      });
+    } else if (result.quotationStatus === QuotationStatuses.PENDING_FINANCE_APPROVAL) {
+      // Escalated to Finance
+      notificationsService.emitNotification({
+        title: `Finance Review: ${quotation.quotationNumber}`,
+        message: `Manager approved. Finance tier-2 margin & profitability review required.`,
+        type: 'APPROVAL',
+        status: 'PENDING',
+        targetRoles: [Roles.FINANCE, Roles.ADMIN],
+        linkUrl: '/approvals',
+      });
+      notificationsService.emitNotification({
+        title: `Manager Approved: ${quotation.quotationNumber}`,
+        message: `Quotation ${quotation.quotationNumber} approved by Sales Manager and routed to Finance.`,
+        type: 'APPROVAL',
+        status: 'INFO',
+        targetUserId: quotation.createdBy,
+        linkUrl: `/quotations/${quotation.id}`,
+      });
+    }
 
     quotationsRepository.invalidateCache();
     return result;
@@ -343,16 +400,6 @@ export class ApprovalRoutingService {
       throw new BadRequestError(`Approval is already in '${approval.status}' state`);
     }
 
-    // Verify associated quotation exists
-    const [quotation] = await this.db
-      .select()
-      .from(quotations)
-      .where(eq(quotations.id, approval.quotationId));
-
-    if (!quotation) {
-      throw new NotFoundError(`Associated quotation with ID '${approval.quotationId}' was not found`);
-    }
-
     // Role-based authorization
     const userRoleList = Array.isArray(userRole) ? userRole : [userRole];
     const isOnlyRep = userRoleList.includes(Roles.SALES_REP) &&
@@ -374,35 +421,53 @@ export class ApprovalRoutingService {
       }
     }
 
+    // Verify associated quotation exists
+    const [quotation] = await this.db
+      .select()
+      .from(quotations)
+      .where(eq(quotations.id, approval.quotationId));
+
+    if (!quotation) {
+      throw new NotFoundError(`Associated quotation with ID '${approval.quotationId}' was not found`);
+    }
+
     const result = await this.db.transaction(async (trx) => {
-      // 1. Update this approval to REJECTED
-      const updatedApproval = await this.repository.updateApproval(
-        approvalId,
-        {
-          status: ApprovalStatuses.REJECTED,
-          decidedAt: new Date(),
-          decidedById: userId,
-          comments,
-        },
+      // Concurrently execute approval update, sibling invalidations, and quotation status update
+      const [updatedApproval] = await Promise.all([
+        this.repository.updateApproval(
+          approvalId,
+          {
+            status: ApprovalStatuses.REJECTED,
+            decidedAt: new Date(),
+            decidedById: userId,
+            comments,
+          },
+          trx
+        ),
+        this.repository.invalidatePendingApprovalsByQuotationId(approval.quotationId, trx),
         trx
-      );
-
-      // 2. Invalidate other pending approvals for this quote
-      await this.repository.invalidatePendingApprovalsByQuotationId(approval.quotationId, trx);
-
-      // 3. Set quotation status to REJECTED
-      await trx
-        .update(quotations)
-        .set({
-          status: QuotationStatuses.REJECTED,
-          updatedAt: new Date(),
-        })
-        .where(eq(quotations.id, approval.quotationId));
+          .update(quotations)
+          .set({
+            status: QuotationStatuses.REJECTED,
+            updatedAt: new Date(),
+          })
+          .where(eq(quotations.id, approval.quotationId)),
+      ]);
 
       return {
         approval: updatedApproval,
         quotationStatus: QuotationStatuses.REJECTED,
       };
+    });
+
+    notificationsService.emitNotification({
+      title: `Quotation ${quotation.quotationNumber} Rejected`,
+      message: `Quotation was rejected during governance review: ${comments || 'Discount exceeded governance limits.'}`,
+      type: 'REJECTION',
+      status: 'REJECTED',
+      targetCustomerId: quotation.customerId,
+      targetRoles: [Roles.CUSTOMER, Roles.SALES_REP, Roles.ADMIN],
+      linkUrl: `/customer/quotations/${quotation.id}`,
     });
 
     quotationsRepository.invalidateCache();

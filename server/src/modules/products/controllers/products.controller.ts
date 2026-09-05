@@ -22,8 +22,12 @@ export class ProductsController {
         {
           page: result.page,
           limit: result.limit,
+          pageSize: result.limit,
           total: result.total,
+          totalItems: result.total,
           totalPages: result.totalPages,
+          hasNextPage: result.page < result.totalPages,
+          hasPreviousPage: result.page > 1,
         }
       );
     } catch (error) {

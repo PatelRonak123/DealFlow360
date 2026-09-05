@@ -78,18 +78,30 @@ export function useApprovals() {
     mutationFn: async ({ approvalId, comments }: { approvalId: string; comments?: string }) => {
       return approvalsApi.approveApproval(approvalId, comments);
     },
-    onSuccess: (data, variables) => {
-      // Invalidate queries to trigger instant re-fetch from database
-      queryClient.invalidateQueries({ queryKey: ['approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['quotations'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    onMutate: async ({ approvalId }) => {
+      await queryClient.cancelQueries({ queryKey: ['approvals', 'pending'] });
 
+      const previousApprovals = queryClient.getQueryData<BackendPendingApprovalItem[]>(['approvals', 'pending']);
+
+      if (previousApprovals) {
+        queryClient.setQueryData<BackendPendingApprovalItem[]>(
+          ['approvals', 'pending'],
+          previousApprovals.filter((item) => item.id !== approvalId)
+        );
+      }
+
+      return { previousApprovals };
+    },
+    onSuccess: (data, variables) => {
       const quoteStatus = data.quotationStatus || 'APPROVED';
       toast.success(`Approval confirmed! Quotation is now ${quoteStatus}.`, {
         id: `approve-success-${variables.approvalId}`,
       });
     },
-    onError: (err: any) => {
+    onError: (err: any, _variables, context) => {
+      if (context?.previousApprovals) {
+        queryClient.setQueryData(['approvals', 'pending'], context.previousApprovals);
+      }
       const errorMessage =
         err?.response?.data?.error?.message ||
         err?.response?.data?.message ||
@@ -99,6 +111,11 @@ export function useApprovals() {
         id: 'approve-error',
       });
     },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 
   // Mutation: Reject
@@ -106,16 +123,29 @@ export function useApprovals() {
     mutationFn: async ({ approvalId, comments }: { approvalId: string; comments: string }) => {
       return approvalsApi.rejectApproval(approvalId, comments);
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['quotations'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    onMutate: async ({ approvalId }) => {
+      await queryClient.cancelQueries({ queryKey: ['approvals', 'pending'] });
 
+      const previousApprovals = queryClient.getQueryData<BackendPendingApprovalItem[]>(['approvals', 'pending']);
+
+      if (previousApprovals) {
+        queryClient.setQueryData<BackendPendingApprovalItem[]>(
+          ['approvals', 'pending'],
+          previousApprovals.filter((item) => item.id !== approvalId)
+        );
+      }
+
+      return { previousApprovals };
+    },
+    onSuccess: (_, variables) => {
       toast.error(`Quotation discount rejected. Sales Rep notified.`, {
         id: `reject-success-${variables.approvalId}`,
       });
     },
-    onError: (err: any) => {
+    onError: (err: any, _variables, context) => {
+      if (context?.previousApprovals) {
+        queryClient.setQueryData(['approvals', 'pending'], context.previousApprovals);
+      }
       const errorMessage =
         err?.response?.data?.error?.message ||
         err?.response?.data?.message ||
@@ -124,6 +154,11 @@ export function useApprovals() {
       toast.error(`Rejection failed: ${errorMessage}`, {
         id: 'reject-error',
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 

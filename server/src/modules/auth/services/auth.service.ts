@@ -1,5 +1,5 @@
 import { db } from '../../../database/db.js';
-import { users, userRoles, refreshTokens, customers, customerTiers } from '../../../database/schema/index.js';
+import { users, userRoles, refreshTokens } from '../../../database/schema/index.js';
 import { usersRepository } from '../../users/repositories/users.repository.js';
 import { refreshTokensRepository } from '../repositories/refreshTokens.repository.js';
 import { rbacRepository } from '../../rbac/repositories/rbac.repository.js';
@@ -18,7 +18,6 @@ export interface RegisterInput {
   name: string;
   email: string;
   password: string;
-  companyName?: string;
 }
 
 export interface LoginInput {
@@ -73,29 +72,6 @@ export class AuthService {
         userId: createdUser.id,
         roleId: defaultRole!.id,
       }).onConflictDoNothing();
-
-      // Ensure customer company record exists
-      if (defaultRole!.name === DEFAULT_PUBLIC_ROLE) {
-        let defaultTier = await tx.query.customerTiers.findFirst();
-        if (!defaultTier) {
-          const [createdTier] = await tx.insert(customerTiers).values({
-            name: 'Enterprise',
-            description: 'Default Customer Tier',
-            isActive: true,
-          }).returning();
-          defaultTier = createdTier;
-        }
-
-        const companyName = input.companyName?.trim() || `${input.name.trim()} Technologies`;
-
-        await tx.insert(customers).values({
-          companyName,
-          contactName: input.name.trim(),
-          email: normalizedEmail,
-          customerTierId: defaultTier.id,
-          status: 'ACTIVE',
-        }).onConflictDoNothing();
-      }
 
       const rawToken = generateRefreshTokenString();
       const tokenHash = hashRefreshToken(rawToken);

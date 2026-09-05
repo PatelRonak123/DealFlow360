@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, numeric, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, numeric, boolean, timestamp, integer } from 'drizzle-orm/pg-core';
 import { productCategories } from './productCategories.js';
 
 export const products = pgTable('products', {
@@ -12,6 +12,7 @@ export const products = pgTable('products', {
   productType: varchar('product_type', { length: 50 }).default('ONE_TIME').notNull(),
   basePrice: numeric('base_price', { precision: 12, scale: 2 }).notNull(),
   currency: varchar('currency', { length: 10 }).default('INR').notNull(),
+  stock: integer('stock').default(50).notNull(),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

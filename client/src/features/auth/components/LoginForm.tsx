@@ -12,7 +12,6 @@ import {
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { validateLogin } from '../schemas/auth.schema';
-import { showProgressToast } from './ProgressToast';
 import { getDashboardPathForRole } from '@/lib/accessControl';
 
 export const LoginForm: React.FC = () => {
@@ -40,19 +39,11 @@ export const LoginForm: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      showProgressToast('Authenticating with server...', 35, 'login-progress');
-
       const result = await login({ email: email.trim(), password });
-
-      showProgressToast('Preparing your workspace...', 80, 'login-progress');
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      showProgressToast('Workspace ready!', 100, 'login-progress');
-      await new Promise((resolve) => setTimeout(resolve, 150));
 
       toast.success(`Welcome back, ${result.user.name}!`, {
         id: 'login-progress',
-        duration: 3000,
+        duration: 2000,
       });
 
       const targetDashboard = getDashboardPathForRole(result.user.activeRole || result.user.role);

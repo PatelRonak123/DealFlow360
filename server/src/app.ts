@@ -8,6 +8,7 @@ import { sendSuccess } from './common/utils/index.js';
 // Domain module routers
 import { authRouter } from './modules/auth/index.js';
 import { usersRouter } from './modules/users/index.js';
+import { rolesRouter, permissionsRouter } from './modules/rbac/index.js';
 import { customerTiersRouter } from './modules/customer-tiers/index.js';
 import { categoriesRouter } from './modules/categories/index.js';
 import { customersRouter } from './modules/customers/index.js';
@@ -23,7 +24,7 @@ import { upsellCrossSellRouter } from './modules/upsell-cross-sell/index.js';
 import { inventoryRouter } from './modules/inventory/index.js';
 import { warehousesRouter } from './modules/warehouses/index.js';
 import { fulfillmentRouter } from './modules/fulfillment/index.js';
-import { subscriptionsRouter } from './modules/subscriptions/index.js';
+import { subscriptionsRouter, subscriptionPlansRouter } from './modules/subscriptions/index.js';
 import { billingRouter } from './modules/billing/index.js';
 import { paymentsRouter } from './modules/payments/index.js';
 import { customerPortalRouter } from './modules/customer-portal/index.js';
@@ -31,6 +32,10 @@ import { dealHealthRouter } from './modules/deal-health/index.js';
 import { notificationsRouter } from './modules/notifications/index.js';
 import { auditLogsRouter } from './modules/audit-logs/index.js';
 import { reportsRouter } from './modules/reports/index.js';
+import { adminRouter } from './modules/admin/index.js';
+import { invoicesRouter } from './modules/invoices/index.js';
+import { financeRouter } from './modules/finance/index.js';
+import { searchRouter } from './modules/search/index.js';
 
 export function createApp(): Express {
   const app = express();
@@ -68,6 +73,8 @@ export function createApp(): Express {
   const prefix = appConfig.apiPrefix;
   app.use(`${prefix}/auth`, authRouter);
   app.use(`${prefix}/users`, usersRouter);
+  app.use(`${prefix}/roles`, rolesRouter);
+  app.use(`${prefix}/permissions`, permissionsRouter);
   app.use(`${prefix}/customer-tiers`, customerTiersRouter);
   app.use(`${prefix}/categories`, categoriesRouter);
   app.use(`${prefix}/customers`, customersRouter);
@@ -84,6 +91,7 @@ export function createApp(): Express {
   app.use(`${prefix}/warehouses`, warehousesRouter);
   app.use(`${prefix}/fulfillment`, fulfillmentRouter);
   app.use(`${prefix}/subscriptions`, subscriptionsRouter);
+  app.use(`${prefix}/subscription-plans`, subscriptionPlansRouter);
   app.use(`${prefix}/billing`, billingRouter);
   app.use(`${prefix}/payments`, paymentsRouter);
   app.use(`${prefix}/customer-portal`, customerPortalRouter);
@@ -91,6 +99,10 @@ export function createApp(): Express {
   app.use(`${prefix}/notifications`, notificationsRouter);
   app.use(`${prefix}/audit-logs`, auditLogsRouter);
   app.use(`${prefix}/reports`, reportsRouter);
+  app.use(`${prefix}/invoices`, invoicesRouter);
+  app.use(`${prefix}/finance`, financeRouter);
+  app.use(`${prefix}/admin`, adminRouter);
+  app.use(`${prefix}/search`, searchRouter);
 
   // 7. 404 Route Catch-all
   app.use(notFoundHandler);

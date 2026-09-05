@@ -25,6 +25,10 @@ import { inventoryTransactions } from '../schema/inventoryTransactions.js';
 import { fulfillments } from '../schema/fulfillments.js';
 import { fulfillmentAllocations } from '../schema/fulfillmentAllocations.js';
 import { backorders } from '../schema/backorders.js';
+import { invoices } from '../schema/invoices.js';
+import { invoiceItems } from '../schema/invoiceItems.js';
+import { payments } from '../schema/payments.js';
+import { creditNotes } from '../schema/creditNotes.js';
 
 export const usersRelations = relations(users, ({ many }) => ({
   userRoles: many(userRoles),
@@ -34,6 +38,9 @@ export const usersRelations = relations(users, ({ many }) => ({
   recommendationEvents: many(recommendationEvents),
   fulfillments: many(fulfillments),
   inventoryTransactions: many(inventoryTransactions),
+  createdInvoices: many(invoices),
+  recordedPayments: many(payments),
+  approvedCreditNotes: many(creditNotes),
 }));
 
 export const rolesRelations = relations(roles, ({ many }) => ({
@@ -95,6 +102,9 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
     references: [customerTiers.id],
   }),
   quotations: many(quotations),
+  invoices: many(invoices),
+  payments: many(payments),
+  creditNotes: many(creditNotes),
 }));
 
 export const productCategoriesRelations = relations(productCategories, ({ many, one }) => ({
@@ -126,6 +136,7 @@ export const productsRelations = relations(products, ({ one, many }) => ({
   inventoryTransactions: many(inventoryTransactions),
   fulfillmentAllocations: many(fulfillmentAllocations),
   backorders: many(backorders),
+  invoiceItems: many(invoiceItems),
 }));
 
 export const priceListsRelations = relations(priceLists, ({ many }) => ({
@@ -162,6 +173,7 @@ export const quotationsRelations = relations(quotations, ({ one, many }) => ({
   discountEvaluations: many(quotationDiscountEvaluations),
   recommendationEvents: many(recommendationEvents),
   fulfillments: many(fulfillments),
+  invoices: many(invoices),
 }));
 
 export const quotationItemsRelations = relations(quotationItems, ({ one, many }) => ({
@@ -307,5 +319,64 @@ export const backordersRelations = relations(backorders, ({ one }) => ({
   product: one(products, {
     fields: [backorders.productId],
     references: [products.id],
+  }),
+}));
+
+export const invoicesRelations = relations(invoices, ({ one, many }) => ({
+  quotation: one(quotations, {
+    fields: [invoices.quotationId],
+    references: [quotations.id],
+  }),
+  customer: one(customers, {
+    fields: [invoices.customerId],
+    references: [customers.id],
+  }),
+  createdByUser: one(users, {
+    fields: [invoices.createdById],
+    references: [users.id],
+  }),
+  items: many(invoiceItems),
+  payments: many(payments),
+  creditNotes: many(creditNotes),
+}));
+
+export const invoiceItemsRelations = relations(invoiceItems, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [invoiceItems.invoiceId],
+    references: [invoices.id],
+  }),
+  product: one(products, {
+    fields: [invoiceItems.productId],
+    references: [products.id],
+  }),
+}));
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [payments.invoiceId],
+    references: [invoices.id],
+  }),
+  customer: one(customers, {
+    fields: [payments.customerId],
+    references: [customers.id],
+  }),
+  recordedByUser: one(users, {
+    fields: [payments.recordedById],
+    references: [users.id],
+  }),
+}));
+
+export const creditNotesRelations = relations(creditNotes, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [creditNotes.invoiceId],
+    references: [invoices.id],
+  }),
+  customer: one(customers, {
+    fields: [creditNotes.customerId],
+    references: [customers.id],
+  }),
+  approvedByUser: one(users, {
+    fields: [creditNotes.approvedById],
+    references: [users.id],
   }),
 }));

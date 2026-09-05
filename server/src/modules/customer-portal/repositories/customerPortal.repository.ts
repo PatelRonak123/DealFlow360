@@ -19,7 +19,10 @@ import {
   CustomerProfile,
   NegotiationHistoryEntry,
   ApprovalStep,
+  CustomerPortalPaginationParams,
+  CustomerPortalPaginatedResult,
 } from '../types/customerPortal.types.js';
+import { notificationsService } from '../../notifications/services/notifications.service.js';
 
 interface InMemoryCustomerData {
   profileExtra?: {
@@ -145,6 +148,40 @@ export class CustomerPortalRepository {
             this.customerCache.set(cacheKey, { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
             this.customerCache.set(found.id.toLowerCase(), { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
             return res;
+          }
+
+          // Multi-Customer Company Matching: If user belongs to a corporate domain, check if another user from the same organization exists
+          const domain = normalized.split('@')[1];
+          const genericDomains = new Set([
+            'gmail.com',
+            'yahoo.com',
+            'outlook.com',
+            'hotmail.com',
+            'icloud.com',
+            'aol.com',
+            'mail.com',
+            'protonmail.com',
+            'zoho.com',
+            'dealflow360.io',
+          ]);
+          if (domain && !genericDomains.has(domain)) {
+            const domainMatch = await db.query.customers.findFirst({
+              where: ilike(customers.email, `%@${domain}`),
+              with: { customerTier: true },
+            });
+            if (domainMatch) {
+              const res: ResolvedCustomer = {
+                id: domainMatch.id,
+                companyName: domainMatch.companyName,
+                contactName: domainMatch.contactName || '',
+                email: normalized,
+                phone: domainMatch.phone || '',
+                tierName: (domainMatch as any).customerTier?.name || 'Standard Tier',
+                customerTierId: domainMatch.customerTierId,
+              };
+              this.customerCache.set(cacheKey, { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
+              return res;
+            }
           }
         }
 
@@ -341,6 +378,71 @@ export class CustomerPortalRepository {
     const discountPercent = subtotalNum > 0 ? Math.round((discountNum / subtotalNum) * 100) : 0;
     const taxAmount = (totalNum * 0.18).toFixed(2);
 
+    // Synchronize live database approval step statuses into negotiation history entries
+    let syncedHistory: NegotiationHistoryEntry[] = (negotiationHistory || []).map((entry) => {
+      const updatedApprovals = (entry.approvals && entry.approvals.length > 0 ? entry.approvals : approvalSteps).map((appr) => {
+        const liveStep = approvalSteps.find((s) => s.level === appr.level);
+        if (liveStep) {
+          return {
+            ...appr,
+            status: liveStep.status,
+            approverName: liveStep.approverName || appr.approverName,
+            decidedAt: liveStep.decidedAt || appr.decidedAt,
+            comments: liveStep.comments !== undefined ? liveStep.comments : appr.comments,
+          };
+        }
+        return appr;
+      });
+
+      const effectiveApprovals = updatedApprovals.length > 0 ? updatedApprovals : approvalSteps;
+
+      let entryStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'RETURNED' = entry.status;
+      if (effectiveApprovals.length > 0) {
+        if (effectiveApprovals.some((a) => a.status === 'REJECTED')) {
+          entryStatus = 'REJECTED';
+        } else if (effectiveApprovals.every((a) => a.status === 'APPROVED')) {
+          entryStatus = 'APPROVED';
+        } else {
+          entryStatus = 'PENDING';
+        }
+      }
+
+      return {
+        ...entry,
+        status: entryStatus,
+        approvals: effectiveApprovals,
+      };
+    });
+
+    if (
+      syncedHistory.length === 0 &&
+      (quote.status === 'PENDING_APPROVAL' || quote.status === 'APPROVED' || quote.status === 'NEGOTIATION') &&
+      discountPercent > 0
+    ) {
+      let entryStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'RETURNED' = 'PENDING';
+      if (approvalSteps.length > 0) {
+        if (approvalSteps.some((a) => a.status === 'REJECTED')) {
+          entryStatus = 'REJECTED';
+        } else if (approvalSteps.every((a) => a.status === 'APPROVED')) {
+          entryStatus = 'APPROVED';
+        }
+      }
+      syncedHistory = [
+        {
+          id: `neg_${quote.id}`,
+          quotationId: quote.id,
+          requestedBy: customer.contactName || 'Customer',
+          requestedRole: 'CUSTOMER',
+          requestedDiscountPercent: discountPercent,
+          reason: quote.notes || 'Commercial discount adjustment request.',
+          changeRequests: ['Higher Volume Pricing / Tier Commitment'],
+          status: entryStatus,
+          approvals: approvalSteps,
+          createdAt: quote.updatedAt ? new Date(quote.updatedAt).toISOString() : new Date().toISOString(),
+        },
+      ];
+    }
+
     return {
       id: quote.id,
       quotationNumber: quote.quotationNumber,
@@ -358,7 +460,7 @@ export class CustomerPortalRepository {
       expiryDate: quote.expiryDate || (quote.createdAt ? new Date(quote.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
       notes: quote.notes || undefined,
       items,
-      negotiationHistory,
+      negotiationHistory: syncedHistory,
       approvalStatus: {
         overallStatus: overallApprovalStatus,
         steps: approvalSteps,
@@ -367,16 +469,16 @@ export class CustomerPortalRepository {
   }
 
   /**
-   * Find quotations for customer from PostgreSQL database
+   * Find quotations for customer from PostgreSQL database with pagination and search optimization
    */
   async findQuotations(
-    query?: { search?: string; status?: string },
+    query?: CustomerPortalPaginationParams,
     customerId?: string,
     userEmail?: string
-  ): Promise<CustomerQuotationDetail[]> {
+  ): Promise<CustomerPortalPaginatedResult<CustomerQuotationDetail>> {
     const customer = await this.resolveCustomer(customerId, userEmail);
     if (!customer) {
-      return [];
+      return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     }
 
     try {
@@ -386,11 +488,12 @@ export class CustomerPortalRepository {
         conditions.push(eq(quotations.status, query.status));
       }
 
-      if (query?.search) {
+      if (query?.search && query.search.trim()) {
+        const term = query.search.trim();
         conditions.push(
           or(
-            ilike(quotations.quotationNumber, `%${query.search}%`),
-            ilike(quotations.notes, `%${query.search}%`)
+            ilike(quotations.quotationNumber, `%${term}%`),
+            ilike(quotations.notes, `%${term}%`)
           )!
         );
       }
@@ -410,11 +513,41 @@ export class CustomerPortalRepository {
 
       const store = this.getStore(customer.id);
 
-      return rows.map((r) =>
+      let mapped = rows.map((r) =>
         this.mapDbQuotationToDetail(r, customer, store.negotiationHistory[r.id] || [])
       );
+
+      // In-memory SKU / Product Name fallback search if term wasn't caught by SQL alone
+      if (query?.search && query.search.trim()) {
+        const s = query.search.trim().toLowerCase();
+        mapped = mapped.filter(
+          (m) =>
+            m.quotationNumber.toLowerCase().includes(s) ||
+            (m.notes && m.notes.toLowerCase().includes(s)) ||
+            m.items.some(
+              (it) =>
+                it.productName.toLowerCase().includes(s) ||
+                it.sku.toLowerCase().includes(s)
+            )
+        );
+      }
+
+      const total = mapped.length;
+      const page = Math.max(1, Number(query?.page) || 1);
+      const limit = Math.max(1, Number(query?.limit) || 10);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const offset = (page - 1) * limit;
+      const paginatedItems = mapped.slice(offset, offset + limit);
+
+      return {
+        items: paginatedItems,
+        total,
+        page,
+        limit,
+        totalPages,
+      };
     } catch {
-      return [];
+      return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     }
   }
 
@@ -548,14 +681,24 @@ export class CustomerPortalRepository {
     }
     store.negotiationHistory[quote.id].unshift(newHistoryEntry);
 
-    store.notifications.unshift({
+    const notifItem = {
       id: `notif_${Date.now()}`,
       title: `Negotiation Submitted for ${quote.quotationNumber}`,
       message: `Your request for ${requestedDiscount}% discount has been submitted to Sales Governance.`,
-      type: 'NEGOTIATION',
+      type: 'NEGOTIATION' as const,
       isRead: false,
       createdAt: new Date().toISOString(),
       linkUrl: `/customer/quotations/${quote.id}`,
+    };
+    store.notifications.unshift(notifItem);
+
+    notificationsService.emitNotification({
+      title: `Counter-Offer: ${quote.quotationNumber}`,
+      message: `${quote.customerName || 'Customer'} submitted a negotiation request (${requestedDiscount}% discount).`,
+      type: 'NEGOTIATION',
+      status: 'PENDING',
+      targetRoles: ['SALES_REP', 'SALES_MANAGER', 'ADMIN'],
+      linkUrl: `/quotations/${quote.id}`,
     });
 
     return (await this.findQuotationById(quotationId, customerId, userEmail))!;
@@ -670,14 +813,24 @@ export class CustomerPortalRepository {
 
     store.invoices.unshift(newInvoice);
 
-    store.notifications.unshift({
+    const notifItem = {
       id: `notif_${Date.now()}`,
       title: `Order Created: ${newOrder.orderNumber}`,
       message: `Quotation ${quote.quotationNumber} has been converted to Order ${newOrder.orderNumber}.`,
-      type: 'ORDER',
+      type: 'ORDER' as const,
       isRead: false,
       createdAt: new Date().toISOString(),
       linkUrl: `/customer/orders/${newOrder.id}`,
+    };
+    store.notifications.unshift(notifItem);
+
+    notificationsService.emitNotification({
+      title: `Deal Won: ${quote.quotationNumber}`,
+      message: `${quote.customerName || 'Customer'} confirmed quotation ${quote.quotationNumber} — Order ${newOrder.orderNumber} created.`,
+      type: 'ORDER',
+      status: 'APPROVED',
+      targetRoles: ['SALES_REP', 'FINANCE', 'ADMIN'],
+      linkUrl: `/quotations/${quote.id}`,
     });
 
     return { quotation: quote, order: newOrder };
@@ -700,7 +853,8 @@ export class CustomerPortalRepository {
       };
     }
 
-    const quotes = await this.findQuotations(undefined, customer.id, userEmail);
+    const quotesResult = await this.findQuotations({ page: 1, limit: 100 }, customer.id, userEmail);
+    const quotes = quotesResult.items;
     const store = this.getStore(customer.id);
 
     const activeQuotations = quotes.filter(
@@ -737,7 +891,8 @@ export class CustomerPortalRepository {
       orderDate: o.orderDate,
     }));
 
-    const recentActivity = store.notifications.slice(0, 6).map((n) => ({
+    const liveNotifs = await this.findNotifications(customerId, userEmail);
+    const recentActivity = liveNotifs.slice(0, 6).map((n) => ({
       id: n.id,
       title: n.title,
       description: n.message,
@@ -756,11 +911,50 @@ export class CustomerPortalRepository {
     };
   }
 
-  async findOrders(customerId?: string, userEmail?: string): Promise<CustomerOrder[]> {
+  async findOrders(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerOrder>> {
     const customer = await this.resolveCustomer(customerId, userEmail);
-    if (!customer) return [];
+    if (!customer) return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     const store = this.getStore(customer.id);
-    return store.orders;
+    let list = store.orders;
+
+    if (query?.status && query.status !== 'ALL') {
+      list = list.filter(
+        (o) => o.fulfillmentStatus === query.status || o.paymentStatus === query.status
+      );
+    }
+
+    if (query?.search && query.search.trim()) {
+      const s = query.search.trim().toLowerCase();
+      list = list.filter(
+        (o) =>
+          o.orderNumber.toLowerCase().includes(s) ||
+          o.quotationNumber.toLowerCase().includes(s) ||
+          o.items.some(
+            (it) =>
+              it.productName.toLowerCase().includes(s) ||
+              it.sku.toLowerCase().includes(s)
+          )
+      );
+    }
+
+    const total = list.length;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 10);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
+    const paginatedItems = list.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   async findOrderById(id: string, customerId?: string, userEmail?: string): Promise<CustomerOrder | undefined> {
@@ -770,11 +964,44 @@ export class CustomerPortalRepository {
     return store.orders.find((o) => o.id === id || o.orderNumber === id);
   }
 
-  async findInvoices(customerId?: string, userEmail?: string): Promise<CustomerInvoice[]> {
+  async findInvoices(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerInvoice>> {
     const customer = await this.resolveCustomer(customerId, userEmail);
-    if (!customer) return [];
+    if (!customer) return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     const store = this.getStore(customer.id);
-    return store.invoices;
+    let list = store.invoices;
+
+    if (query?.status && query.status !== 'ALL') {
+      list = list.filter((inv) => inv.status === query.status);
+    }
+
+    if (query?.search && query.search.trim()) {
+      const s = query.search.trim().toLowerCase();
+      list = list.filter(
+        (inv) =>
+          inv.invoiceNumber.toLowerCase().includes(s) ||
+          inv.orderNumber.toLowerCase().includes(s) ||
+          inv.quotationNumber.toLowerCase().includes(s)
+      );
+    }
+
+    const total = list.length;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 10);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
+    const paginatedItems = list.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   async findInvoiceById(id: string, customerId?: string, userEmail?: string): Promise<CustomerInvoice | undefined> {
@@ -840,11 +1067,41 @@ export class CustomerPortalRepository {
     return { invoice, payment };
   }
 
-  async findPayments(customerId?: string, userEmail?: string): Promise<CustomerPayment[]> {
+  async findPayments(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerPayment>> {
     const customer = await this.resolveCustomer(customerId, userEmail);
-    if (!customer) return [];
+    if (!customer) return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     const store = this.getStore(customer.id);
-    return store.payments;
+    let list = store.payments;
+
+    if (query?.search && query.search.trim()) {
+      const s = query.search.trim().toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.paymentNumber.toLowerCase().includes(s) ||
+          p.invoiceNumber.toLowerCase().includes(s) ||
+          p.orderNumber.toLowerCase().includes(s) ||
+          p.transactionReference.toLowerCase().includes(s)
+      );
+    }
+
+    const total = list.length;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 10);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
+    const paginatedItems = list.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   async findSubscriptions(customerId?: string, userEmail?: string): Promise<CustomerSubscription[]> {
@@ -863,9 +1120,29 @@ export class CustomerPortalRepository {
 
   async findNotifications(customerId?: string, userEmail?: string): Promise<CustomerNotification[]> {
     const customer = await this.resolveCustomer(customerId, userEmail);
-    const storeKey = customer?.id || userEmail || 'unknown';
-    const store = this.getStore(storeKey);
-    return store.notifications;
+    const userEmailResolved = userEmail || customer?.email || '';
+    const userIdResolved = customer?.id || userEmailResolved;
+
+    const notifs = await notificationsService.getNotificationsForUser(
+      {
+        userId: userIdResolved,
+        email: userEmailResolved,
+        name: customer?.contactName || customer?.companyName || userEmailResolved || 'Customer',
+        roles: ['CUSTOMER'],
+        permissions: [],
+      },
+      'CUSTOMER'
+    );
+
+    return notifs.map((n) => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      type: n.type as any,
+      isRead: n.isRead,
+      createdAt: n.createdAt,
+      linkUrl: n.linkUrl,
+    }));
   }
 
   async markNotificationAsRead(id: string): Promise<boolean> {
@@ -873,10 +1150,9 @@ export class CustomerPortalRepository {
       const notif = store.notifications.find((n) => n.id === id);
       if (notif) {
         notif.isRead = true;
-        return true;
       }
     }
-    return false;
+    return notificationsService.markNotificationRead(id, 'CUSTOMER');
   }
 
   async markAllNotificationsAsRead(): Promise<boolean> {
@@ -885,7 +1161,7 @@ export class CustomerPortalRepository {
         n.isRead = true;
       });
     }
-    return true;
+    return notificationsService.markAllNotificationsRead('CUSTOMER', []);
   }
 }
 

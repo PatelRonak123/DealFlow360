@@ -12,6 +12,7 @@ import {
   getPrimaryRole,
   ROLES,
 } from '@/lib/accessControl';
+import { queryClient } from '@/lib/queryClient';
 
 export interface AuthContextUser {
   id: string;
@@ -161,6 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const switchRole = (newRole: UserRole) => {
+    queryClient.clear();
     const normalized = normalizeRole(newRole);
     const updated: AuthContextUser = {
       ...user,
@@ -179,6 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (credentials?: unknown): Promise<{ user: AuthContextUser }> => {
     setIsLoading(true);
+    queryClient.clear();
     const creds = credentials as { email?: string; password?: string } | undefined;
 
     if (!creds?.email || !creds?.password) {
@@ -244,6 +247,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setIsAuthenticated(false);
     clearAuthTokens();
+    queryClient.clear();
     setUser(INITIAL_UNAUTHENTICATED_USER);
     try {
       localStorage.removeItem(AUTH_USER_KEY);
@@ -256,7 +260,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (data?: unknown): Promise<{ user: AuthContextUser }> => {
     setIsLoading(true);
-    const regData = data as { name?: string; email?: string; password?: string; companyName?: string } | undefined;
+    queryClient.clear();
+    const regData = data as { name?: string; email?: string; password?: string } | undefined;
 
     if (!regData?.email || !regData?.password) {
       setIsLoading(false);
@@ -271,7 +276,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: rawName,
         email: rawEmail.toLowerCase(),
         password: regData.password,
-        companyName: regData.companyName?.trim() || undefined,
       });
 
       if (!serverResult?.user || !serverResult.accessToken) {
@@ -292,12 +296,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         roles: normalizedRoles,
         permissions: serverResult.user.permissions || [],
         activeRole: primaryRole,
-        customer: serverResult.user.customerId
-          ? {
-              id: serverResult.user.customerId,
-              companyName: serverResult.user.customerName || 'Customer Account',
-            }
-          : undefined,
         title: getRoleTitle(primaryRole),
       };
 

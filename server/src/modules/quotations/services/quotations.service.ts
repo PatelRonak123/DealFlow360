@@ -11,6 +11,9 @@ import {
   AddQuotationItemInput,
   UpdateQuotationItemInput,
   QuotationQueryInput,
+  NegotiateQuotationInput,
+  ReviseQuotationInput,
+  QuotationOutcomeInput,
 } from '../validators/quotation.validator.js';
 import { QuotationStatuses } from '../constants/quotationStatus.js';
 import { customersRepository } from '../../customers/repositories/customers.repository.js';
@@ -55,6 +58,9 @@ export class QuotationsService {
   private assertQuotationEditable(quotation: Quotation): void {
     const unmodifiableStatuses: string[] = [
       QuotationStatuses.SENT,
+      QuotationStatuses.NEGOTIATION,
+      QuotationStatuses.WON,
+      QuotationStatuses.LOST,
       QuotationStatuses.CANCELLED,
       QuotationStatuses.EXPIRED,
     ];
@@ -117,6 +123,11 @@ export class QuotationsService {
           }
           if (!prod.isActive) {
             throw new BadRequestError(`Cannot add inactive product '${prod.name}' to quotation`);
+          }
+          if (prod.stock !== undefined && prod.stock !== null && item.quantity > prod.stock) {
+            throw new BadRequestError(
+              `Insufficient stock for '${prod.name}' (SKU: ${prod.sku}). Requested quantity: ${item.quantity}, Available stock: ${prod.stock}`
+            );
           }
           productMap.set(item.productId, prod);
         }
@@ -329,6 +340,11 @@ export class QuotationsService {
     if (!product.isActive) {
       throw new BadRequestError(`Cannot add inactive product '${product.name}' to quotation`);
     }
+    if (product.stock !== undefined && product.stock !== null && data.quantity > product.stock) {
+      throw new BadRequestError(
+        `Insufficient stock for '${product.name}' (SKU: ${product.sku}). Requested quantity: ${data.quantity}, Available stock: ${product.stock}`
+      );
+    }
 
     // 3. Resolve price using PricingService
     const priceResolution = await pricingService.resolveProductPrice({
@@ -436,6 +452,186 @@ export class QuotationsService {
     const updatedQuotation = await this.repository.recalculateAndSaveTotals(quotationId);
 
     return { quotation: updatedQuotation };
+  }
+
+  // --- Negotiation, Revision, and Win/Loss Workflow Operations ---
+
+  async sendQuotation(id: string, user: AuthUserContext): Promise<Quotation> {
+    const quotation = await this.getQuotationById(id, user);
+
+    const allowedToSend: string[] = [
+      QuotationStatuses.APPROVED,
+      QuotationStatuses.DRAFT,
+      QuotationStatuses.NEGOTIATION,
+    ];
+
+    if (!allowedToSend.includes(quotation.status)) {
+      throw new BadRequestError(
+        `Quotation ${quotation.quotationNumber} is in '${quotation.status}' status and cannot be sent to customer`
+      );
+    }
+
+    const updated = await this.repository.update(id, {
+      status: QuotationStatuses.SENT,
+    });
+
+    if (!updated) {
+      throw new NotFoundError(`Quotation with ID '${id}' not found`);
+    }
+
+    return updated;
+  }
+
+  async negotiateQuotation(
+    id: string,
+    data: NegotiateQuotationInput,
+    user: AuthUserContext
+  ): Promise<Quotation> {
+    const quotation = await this.getQuotationById(id, user);
+
+    const allowedStatuses: string[] = [
+      QuotationStatuses.SENT,
+      QuotationStatuses.APPROVED,
+      QuotationStatuses.NEGOTIATION,
+    ];
+
+    if (!allowedStatuses.includes(quotation.status)) {
+      throw new BadRequestError(
+        `Only sent or approved quotations can move into negotiation. Current status is '${quotation.status}'`
+      );
+    }
+
+    let updatedNotes = quotation.notes || '';
+    if (data.notes) {
+      const negotiationEntry = `[Client Negotiation ${new Date().toLocaleDateString()}]: ${data.notes}`;
+      updatedNotes = updatedNotes ? `${updatedNotes}\n\n${negotiationEntry}` : negotiationEntry;
+    }
+
+    const updated = await this.repository.update(id, {
+      status: QuotationStatuses.NEGOTIATION,
+      notes: updatedNotes || null,
+    });
+
+    if (!updated) {
+      throw new NotFoundError(`Quotation with ID '${id}' not found`);
+    }
+
+    return updated;
+  }
+
+  async reviseQuotation(
+    id: string,
+    data: ReviseQuotationInput,
+    user: AuthUserContext
+  ): Promise<QuotationWithDetails> {
+    const parent = await this.getQuotationById(id, user);
+
+    const existingItems = await this.repository.findItemsByQuotationId(id);
+    if (existingItems.length === 0) {
+      throw new BadRequestError(
+        `Cannot revise quotation '${parent.quotationNumber}' because it contains no line items`
+      );
+    }
+
+    const revisionNumber = await this.repository.generateNextRevisionNumber(parent.quotationNumber);
+    const today = new Date().toISOString().split('T')[0];
+    const expiryDateObj = new Date();
+    expiryDateObj.setDate(expiryDateObj.getDate() + 30);
+    const expiryDate = expiryDateObj.toISOString().split('T')[0];
+
+    const revNote = `Revision of ${parent.quotationNumber}${data?.notes ? `: ${data.notes}` : ''}`;
+    const fullNotes = parent.notes ? `${revNote}\n\n[Original]: ${parent.notes}` : revNote;
+
+    const createdQuotation = await db.transaction(async (tx) => {
+      const [insertedHeader] = await tx
+        .insert(quotations)
+        .values({
+          quotationNumber: revisionNumber,
+          customerId: parent.customerId,
+          priceListId: parent.priceListId,
+          status: QuotationStatuses.DRAFT,
+          currency: parent.currency,
+          subtotal: parent.subtotal,
+          discountAmount: parent.discountAmount,
+          totalAmount: parent.totalAmount,
+          issueDate: today,
+          expiryDate: expiryDate,
+          notes: fullNotes,
+          createdBy: user.userId,
+        })
+        .returning();
+
+      for (const item of existingItems) {
+        await tx.insert(quotationItems).values({
+          quotationId: insertedHeader.id,
+          productId: item.productId,
+          productNameSnapshot: item.productNameSnapshot,
+          skuSnapshot: item.skuSnapshot,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discountPercent: item.discountPercent,
+          grossAmount: item.grossAmount,
+          discountAmount: item.discountAmount,
+          netAmount: item.netAmount,
+        });
+      }
+
+      return insertedHeader;
+    });
+
+    this.repository.invalidateCache();
+    return this.getQuotationById(createdQuotation.id, user);
+  }
+
+  async markQuotationWon(
+    id: string,
+    data: QuotationOutcomeInput,
+    user: AuthUserContext
+  ): Promise<Quotation> {
+    const quotation = await this.getQuotationById(id, user);
+
+    let updatedNotes = quotation.notes || '';
+    if (data.notes) {
+      const winNote = `[Deal Won ${new Date().toLocaleDateString()}]: ${data.notes}`;
+      updatedNotes = updatedNotes ? `${updatedNotes}\n\n${winNote}` : winNote;
+    }
+
+    const updated = await this.repository.update(id, {
+      status: QuotationStatuses.WON,
+      notes: updatedNotes || null,
+    });
+
+    if (!updated) {
+      throw new NotFoundError(`Quotation with ID '${id}' not found`);
+    }
+
+    return updated;
+  }
+
+  async markQuotationLost(
+    id: string,
+    data: QuotationOutcomeInput,
+    user: AuthUserContext
+  ): Promise<Quotation> {
+    const quotation = await this.getQuotationById(id, user);
+
+    let updatedNotes = quotation.notes || '';
+    const lossReason = data.reason || data.notes;
+    if (lossReason) {
+      const lossNote = `[Deal Lost ${new Date().toLocaleDateString()}]: ${lossReason}`;
+      updatedNotes = updatedNotes ? `${updatedNotes}\n\n${lossNote}` : lossNote;
+    }
+
+    const updated = await this.repository.update(id, {
+      status: QuotationStatuses.LOST,
+      notes: updatedNotes || null,
+    });
+
+    if (!updated) {
+      throw new NotFoundError(`Quotation with ID '${id}' not found`);
+    }
+
+    return updated;
   }
 }
 
