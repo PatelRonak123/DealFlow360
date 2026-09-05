@@ -33,6 +33,9 @@ import { notificationsRouter } from './modules/notifications/index.js';
 import { auditLogsRouter } from './modules/audit-logs/index.js';
 import { reportsRouter } from './modules/reports/index.js';
 import { adminRouter } from './modules/admin/index.js';
+import { invoicesRouter } from './modules/invoices/index.js';
+import { financeRouter } from './modules/finance/index.js';
+import { searchRouter } from './modules/search/index.js';
 
 export function createApp(): Express {
   const app = express();
@@ -96,7 +99,10 @@ export function createApp(): Express {
   app.use(`${prefix}/notifications`, notificationsRouter);
   app.use(`${prefix}/audit-logs`, auditLogsRouter);
   app.use(`${prefix}/reports`, reportsRouter);
+  app.use(`${prefix}/invoices`, invoicesRouter);
+  app.use(`${prefix}/finance`, financeRouter);
   app.use(`${prefix}/admin`, adminRouter);
+  app.use(`${prefix}/search`, searchRouter);
 
   // 7. 404 Route Catch-all
   app.use(notFoundHandler);

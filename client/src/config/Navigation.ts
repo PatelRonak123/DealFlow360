@@ -73,6 +73,36 @@ export const adminNavigationSections: NavSection[] = [
   },
 ];
 
+export const financeNavigationSections: NavSection[] = [
+  {
+    title: undefined,
+    items: [
+      { label: 'Finance Dashboard', to: '/finance/dashboard', icon: LayoutGrid, roles: [ROLES.FINANCE] },
+    ],
+  },
+  {
+    title: 'GOVERNANCE & CONTROLS',
+    items: [
+      { label: 'Finance Approvals', to: '/finance/approvals', icon: ShieldCheck, roles: [ROLES.FINANCE] },
+    ],
+  },
+  {
+    title: 'FINANCIAL OPERATIONS',
+    items: [
+      { label: 'Invoices', to: '/finance/invoices', icon: Receipt, roles: [ROLES.FINANCE] },
+      { label: 'Payments', to: '/finance/payments', icon: CreditCard, roles: [ROLES.FINANCE] },
+      { label: 'Billing Schedule', to: '/finance/billing', icon: CalendarClock, roles: [ROLES.FINANCE] },
+    ],
+  },
+  {
+    title: 'CONTRACTS & REVENUE',
+    items: [
+      { label: 'Subscriptions', to: '/finance/subscriptions', icon: Repeat, roles: [ROLES.FINANCE] },
+      { label: 'Revenue Analytics', to: '/reports', icon: BarChart2, roles: [ROLES.FINANCE] },
+    ],
+  },
+];
+
 export const navigationConfig: NavSection[] = [
   {
     title: 'Workspace',
@@ -114,6 +144,10 @@ export function getNavForRole(role: UserRole | string): NavSection[] {
 
   if (normalizedRole === ROLES.ADMIN) {
     return adminNavigationSections;
+  }
+
+  if (normalizedRole === ROLES.FINANCE) {
+    return financeNavigationSections;
   }
 
   return navigationConfig

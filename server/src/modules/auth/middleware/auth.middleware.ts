@@ -58,6 +58,8 @@ export function requireRole(...allowedRoles: string[]) {
   };
 }
 
+export const requireRoles = requireRole;
+
 export function requirePermission(...requiredPermissions: string[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {

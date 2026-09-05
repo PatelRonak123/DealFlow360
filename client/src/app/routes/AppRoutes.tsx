@@ -9,8 +9,15 @@ import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 // Dashboards
 import { SalesRepDashboard } from '@/features/dashboard/components/SalesRepDashboard';
 import {
-  FinanceDashboard,
-} from '@/features/dashboard/components/OtherRoleDashboards';
+  FinanceDashboardPage,
+  FinanceApprovalsPage,
+  FinanceApprovalDetailPage,
+  FinanceInvoicesPage,
+  FinanceInvoiceDetailPage,
+  FinancePaymentsPage,
+  FinanceBillingPage,
+  FinanceSubscriptionsPage,
+} from '@/features/finance';
 import { SalesManagerDashboard } from '@/features/dashboard/components/SalesManagerDashboard';
 import {
   AdminDashboardPage,
@@ -153,7 +160,85 @@ export const AppRoutes: React.FC = () => {
                 allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
                 moduleName="Commercial Finance Workspace"
               >
-                <FinanceDashboard />
+                <FinanceDashboardPage />
+              </RoleGuard>
+            }
+          />
+          <Route path="/finance" element={<Navigate to="/finance/dashboard" replace />} />
+          <Route
+            path="/finance/approvals"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Finance Approvals Queue"
+              >
+                <FinanceApprovalsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/approvals/:id"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Financial Deal Review"
+              >
+                <FinanceApprovalDetailPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/invoices"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Commercial Invoices"
+              >
+                <FinanceInvoicesPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/invoices/:id"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Invoice Details"
+              >
+                <FinanceInvoiceDetailPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/payments"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Payments Ledger"
+              >
+                <FinancePaymentsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/billing"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Billing Schedule"
+              >
+                <FinanceBillingPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/finance/subscriptions"
+            element={
+              <RoleGuard
+                allowedRoles={[ROLES.FINANCE, ROLES.ADMIN]}
+                moduleName="Subscription Contracts"
+              >
+                <FinanceSubscriptionsPage />
               </RoleGuard>
             }
           />

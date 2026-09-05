@@ -165,12 +165,10 @@ export class CustomerPortalRepository {
             'dealflow360.io',
           ]);
           if (domain && !genericDomains.has(domain)) {
-            const allCustomers = await db.query.customers.findMany({
+            const domainMatch = await db.query.customers.findFirst({
+              where: ilike(customers.email, `%@${domain}`),
               with: { customerTier: true },
             });
-            const domainMatch = allCustomers.find(
-              (c) => c.email && c.email.toLowerCase().endsWith(`@${domain}`)
-            );
             if (domainMatch) {
               const res: ResolvedCustomer = {
                 id: domainMatch.id,

@@ -4,13 +4,16 @@ import { Toaster } from 'react-hot-toast';
 import { queryClient } from '@/lib/queryClient';
 
 import { AuthProvider } from '@/features/auth';
+import { SidebarProvider } from '@/context/SidebarContext';
 
 export const AppProviders: React.FC<PropsWithChildren> = ({ children }) => {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {children}
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+        <SidebarProvider>
+          {children}
+          <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+        </SidebarProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

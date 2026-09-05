@@ -285,10 +285,9 @@ export class UsersRepository {
               'dealflow360.io',
             ]);
             if (domain && !genericDomains.has(domain)) {
-              const allCustomers = await db.query.customers.findMany();
-              const domainCustomer = allCustomers.find(
-                (c) => c.email && c.email.toLowerCase().endsWith(`@${domain}`)
-              );
+              const domainCustomer = await db.query.customers.findFirst({
+                where: ilike(customers.email, `%@${domain}`),
+              });
               if (domainCustomer) {
                 customerId = domainCustomer.id;
                 customerName = domainCustomer.companyName || domainCustomer.contactName || undefined;

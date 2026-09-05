@@ -318,7 +318,7 @@ export const AdminRolesPage: React.FC = () => {
             <div className="space-y-3 max-h-64 overflow-y-auto border border-gray-100 rounded-xl p-3 bg-gray-50/50">
               {groupedPermissions.map((group) => (
                 <div key={group.domain} className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-2xs">
-                  <p className="font-bold text-[#17213a] uppercase text-[11px] tracking-wider mb-2 text-purple-700">
+                  <p className="font-bold uppercase text-[11px] tracking-wider mb-2 text-purple-700">
                     {group.domain} Module
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
@@ -393,7 +393,7 @@ export const AdminRolesPage: React.FC = () => {
             <div className="space-y-3 max-h-72 overflow-y-auto border border-gray-100 rounded-xl p-3 bg-gray-50/50">
               {groupedPermissions.map((group) => (
                 <div key={group.domain} className="rounded-lg bg-white p-2.5 border border-gray-100 shadow-2xs">
-                  <p className="font-bold text-[#17213a] uppercase text-[11px] tracking-wider mb-2 text-purple-700">
+                  <p className="font-bold uppercase text-[11px] tracking-wider mb-2 text-purple-700">
                     {group.domain}
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">

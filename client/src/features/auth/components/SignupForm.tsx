@@ -14,7 +14,6 @@ import {
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { validateSignup } from '../schemas/auth.schema';
-import { showProgressToast } from './ProgressToast';
 import { getDashboardPathForRole } from '@/lib/accessControl';
 
 export const SignupForm: React.FC = () => {
@@ -44,8 +43,6 @@ export const SignupForm: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      showProgressToast('Creating your account...', 35, 'signup-progress');
-
       const result = await register({
         name: name.trim(),
         email: email.trim(),
@@ -53,15 +50,9 @@ export const SignupForm: React.FC = () => {
         role,
       });
 
-      showProgressToast('Configuring workspace...', 80, 'signup-progress');
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      showProgressToast('Account ready!', 100, 'signup-progress');
-      await new Promise((resolve) => setTimeout(resolve, 150));
-
       toast.success(`Account created! Welcome, ${result.user.name}!`, {
         id: 'signup-progress',
-        duration: 3000,
+        duration: 2000,
       });
 
       const targetDashboard = getDashboardPathForRole(result.user.activeRole || result.user.role);

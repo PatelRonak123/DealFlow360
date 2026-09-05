@@ -280,3 +280,5 @@ export class DiscountGovernanceRepository {
     return fetchPromise;
   }
 }
+
+export const discountGovernanceRepository = new DiscountGovernanceRepository();
