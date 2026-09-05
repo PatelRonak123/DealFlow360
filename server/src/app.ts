@@ -12,6 +12,8 @@ import { customerTiersRouter } from './modules/customer-tiers/index.js';
 import { categoriesRouter } from './modules/categories/index.js';
 import { customersRouter } from './modules/customers/index.js';
 import { productsRouter } from './modules/products/index.js';
+import { priceListsRouter } from './modules/price-lists/index.js';
+import { discountRulesRouter } from './modules/discount-rules/index.js';
 import { pricingRouter } from './modules/pricing/index.js';
 import { discountGovernanceRouter } from './modules/discount-governance/index.js';
 import { quotationsRouter } from './modules/quotations/index.js';
@@ -69,6 +71,8 @@ export function createApp(): Express {
   app.use(`${prefix}/categories`, categoriesRouter);
   app.use(`${prefix}/customers`, customersRouter);
   app.use(`${prefix}/products`, productsRouter);
+  app.use(`${prefix}/price-lists`, priceListsRouter);
+  app.use(`${prefix}/discount-rules`, discountRulesRouter);
   app.use(`${prefix}/pricing`, pricingRouter);
   app.use(`${prefix}/discount-governance`, discountGovernanceRouter);
   app.use(`${prefix}/quotations`, quotationsRouter);
