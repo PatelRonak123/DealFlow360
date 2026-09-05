@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { customerPortalController } from '../controllers/customerPortal.controller.js';
+import { requireAuth, requireRole } from '../../auth/middleware/auth.middleware.js';
+import { Roles } from '../../rbac/constants/roles.js';
 
 export const customerPortalRouter = Router();
+
+// Protect all customer portal routes: Authenticated users with CUSTOMER (or ADMIN) role
+customerPortalRouter.use(requireAuth, requireRole(Roles.CUSTOMER, Roles.ADMIN));
 
 // Dashboard
 customerPortalRouter.get('/dashboard', (req, res, next) => customerPortalController.getDashboard(req, res, next));

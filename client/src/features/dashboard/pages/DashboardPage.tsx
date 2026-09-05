@@ -1,44 +1,16 @@
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth';
-import { UserRole } from '@/types/Auth';
-import { CustomerDashboardPage } from '@/features/customer-portal';
-import { SalesRepDashboard } from '../components/SalesRepDashboard';
-import {
-  SalesManagerDashboard,
-  FinanceOpsDashboard,
-  AdminDashboard,
-} from '../components/OtherRoleDashboards';
+import { normalizeRole, getDashboardPathForRole, ROLES } from '@/lib/accessControl';
 
 /**
- * Role-neutral Dashboard Page Dispatcher
- * Dispatches dashboard content dynamically based on the logged-in user's role.
- * Does not hardcode the page layout specifically as a Sales Rep dashboard.
+ * Intelligent Role Dashboard Resolver
+ * Redirects user from generic `/dashboard` to their authorized, role-specific URL
  */
 export function DashboardPage() {
   const { user } = useAuth();
-  const rawRole = user?.roles?.[0]?.toLowerCase() || user?.role?.toLowerCase();
-  const role: UserRole =
-    rawRole === 'sales_representative' || rawRole === 'sales_rep'
-      ? 'sales_rep'
-      : rawRole === 'sales_manager'
-        ? 'sales_manager'
-        : rawRole === 'finance_ops' || rawRole === 'finance'
-          ? 'finance_ops'
-          : rawRole === 'admin'
-            ? 'admin'
-            : (rawRole as UserRole) || 'customer';
+  const activeRole = normalizeRole(user?.activeRole || user?.role || ROLES.SALES_REP);
+  const targetPath = getDashboardPathForRole(activeRole);
 
-  switch (role) {
-    case 'customer':
-      return <CustomerDashboardPage />;
-    case 'sales_rep':
-      return <SalesRepDashboard />;
-    case 'sales_manager':
-      return <SalesManagerDashboard />;
-    case 'finance_ops':
-      return <FinanceOpsDashboard />;
-    case 'admin':
-      return <AdminDashboard />;
-    default:
-      return <SalesRepDashboard />;
-  }
+  return <Navigate to={targetPath} replace />;
 }
+

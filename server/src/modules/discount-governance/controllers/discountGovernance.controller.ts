@@ -181,7 +181,7 @@ export class DiscountGovernanceController {
         allowedLevels = undefined; // see all
       } else if (userRoles.includes(Roles.SALES_MANAGER)) {
         allowedLevels = [ApprovalLevels.MANAGER];
-      } else if (userRoles.includes(Roles.FINANCE_OPERATIONS)) {
+      } else if (userRoles.includes(Roles.FINANCE)) {
         allowedLevels = [ApprovalLevels.FINANCE];
       } else {
         // Sales Reps or other roles cannot view approvals

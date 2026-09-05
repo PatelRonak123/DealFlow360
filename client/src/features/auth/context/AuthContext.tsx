@@ -1,13 +1,30 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserRole } from '@/types/Auth';
 import { authApi } from '../api/authApi';
+import {
+  getAccessToken,
+  setAuthTokens,
+  clearAuthTokens,
+} from '@/api/apiClient';
+import {
+  normalizeRole,
+  getRoleTitle,
+  getPrimaryRole,
+  ROLES,
+} from '@/lib/accessControl';
 
 export interface AuthContextUser {
   id: string;
   name: string;
-  role: UserRole;
-  roles: string[];
   email: string;
+  role: UserRole;
+  roles: UserRole[];
+  permissions: string[];
+  activeRole: UserRole;
+  customer?: {
+    id: string;
+    companyName: string;
+  };
   title: string;
 }
 
@@ -15,6 +32,7 @@ export interface AuthContextType {
   user: AuthContextUser;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitializing: boolean;
   switchRole: (role: UserRole) => void;
   login: (credentials?: { email?: string; password?: string } | unknown) => Promise<{ user: AuthContextUser }>;
   logout: () => Promise<void>;
@@ -23,46 +41,32 @@ export interface AuthContextType {
   isManager: boolean;
   isFinance: boolean;
   isAdmin: boolean;
+  isCustomer: boolean;
 }
 
-export function normalizeRole(roleStr?: string): UserRole {
-  if (!roleStr) return 'sales_rep';
-  const clean = roleStr.toLowerCase().replace(/-/g, '_');
-  if (clean.includes('admin')) return 'admin';
-  if (clean.includes('finance') || clean.includes('operations')) return 'finance_ops';
-  if (clean.includes('manager') || clean.includes('director')) return 'sales_manager';
-  if (clean.includes('customer') || clean.includes('client')) return 'customer';
-  return 'sales_rep';
-}
-
-function getRoleTitle(role: UserRole): string {
-  switch (role) {
-    case 'sales_rep':
-      return 'Senior Enterprise Sales Representative';
-    case 'sales_manager':
-      return 'Regional Sales Director';
-    case 'finance_ops':
-      return 'VP of Commercial Finance & Revenue Ops';
-    case 'admin':
-      return 'System & Governance Administrator';
-    case 'customer':
-      return 'Customer Procurement Lead';
-    default:
-      return 'Enterprise User';
-  }
-}
+const AUTH_USER_KEY = 'dealflow360_user_session_v4';
+const ACTIVE_ROLE_KEY = 'dealflow360_active_role_v4';
 
 function parseNameFromEmail(email: string): string {
-  if (!email || !email.includes('@')) return 'Sales Representative';
+  if (!email || !email.includes('@')) return 'Enterprise User';
   const prefix = email.split('@')[0];
   const words = prefix.split(/[._-]/).filter(Boolean);
-  if (words.length === 0) return 'Sales Representative';
+  if (words.length === 0) return 'Enterprise User';
   return words
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
 }
 
-const AUTH_USER_KEY = 'dealflow360_logged_in_user_v2';
+const INITIAL_UNAUTHENTICATED_USER: AuthContextUser = {
+  id: '',
+  name: '',
+  email: '',
+  role: ROLES.SALES_REP,
+  roles: [ROLES.SALES_REP],
+  permissions: [],
+  activeRole: ROLES.SALES_REP,
+  title: getRoleTitle(ROLES.SALES_REP),
+};
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -76,37 +80,97 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       // ignore
     }
-    // Default fallback profile if not logged in yet
-    return {
-      id: 'USR-REP-01',
-      name: 'Riya Patel',
-      role: 'sales_rep',
-      roles: ['sales_rep'],
-      email: 'riya.patel@dealflow360.io',
-      title: 'Senior Enterprise Sales Representative',
-    };
+    return INITIAL_UNAUTHENTICATED_USER;
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(AUTH_USER_KEY);
-      return saved !== null;
-    } catch {
-      return false;
-    }
+    return Boolean(getAccessToken());
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
+
+  // Hydrate user session from /api/v1/auth/me on startup
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initializeAuthSession() {
+      const token = getAccessToken();
+      if (!token) {
+        if (isMounted) {
+          setIsAuthenticated(false);
+          setIsInitializing(false);
+        }
+        return;
+      }
+
+      try {
+        const currentUserContext = await authApi.getCurrentUser();
+        if (isMounted && currentUserContext) {
+          const normalizedRoles = (currentUserContext.roles || [ROLES.SALES_REP]).map(normalizeRole);
+          const savedActiveRole = localStorage.getItem(ACTIVE_ROLE_KEY) as UserRole | null;
+          const activeRole =
+            savedActiveRole && normalizedRoles.includes(normalizeRole(savedActiveRole))
+              ? normalizeRole(savedActiveRole)
+              : getPrimaryRole(normalizedRoles);
+
+          const hydratedUser: AuthContextUser = {
+            id: currentUserContext.userId,
+            name: currentUserContext.name || parseNameFromEmail(currentUserContext.email),
+            email: currentUserContext.email,
+            role: activeRole,
+            roles: normalizedRoles,
+            permissions: currentUserContext.permissions || [],
+            activeRole,
+            customer: currentUserContext.customerId
+              ? {
+                  id: currentUserContext.customerId,
+                  companyName: currentUserContext.customerName || 'Customer Account',
+                }
+              : undefined,
+            title: getRoleTitle(activeRole),
+          };
+
+          setUser(hydratedUser);
+          setIsAuthenticated(true);
+          try {
+            localStorage.setItem(AUTH_USER_KEY, JSON.stringify(hydratedUser));
+          } catch {
+            // ignore
+          }
+        }
+      } catch (err) {
+        console.warn('Could not restore auth session from server:', err);
+        clearAuthTokens();
+        if (isMounted) {
+          setIsAuthenticated(false);
+          setUser(INITIAL_UNAUTHENTICATED_USER);
+        }
+      } finally {
+        if (isMounted) {
+          setIsInitializing(false);
+        }
+      }
+    }
+
+    initializeAuthSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const switchRole = (newRole: UserRole) => {
+    const normalized = normalizeRole(newRole);
     const updated: AuthContextUser = {
       ...user,
-      role: newRole,
-      roles: [newRole],
-      title: getRoleTitle(newRole),
+      role: normalized,
+      activeRole: normalized,
+      title: getRoleTitle(normalized),
     };
     setUser(updated);
     try {
+      localStorage.setItem(ACTIVE_ROLE_KEY, normalized);
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updated));
     } catch {
       // ignore
@@ -116,83 +180,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (credentials?: unknown): Promise<{ user: AuthContextUser }> => {
     setIsLoading(true);
     const creds = credentials as { email?: string; password?: string } | undefined;
-    let loggedUser: AuthContextUser | null = null;
 
-    if (creds?.email) {
-      const rawEmail = creds.email.trim();
-      const normalizedEmail = rawEmail.toLowerCase();
-      const password = creds.password || '';
-
-      // 1. Attempt real backend server login
-      try {
-        const serverResult = await authApi.login({
-          email: normalizedEmail,
-          password,
-        });
-
-        if (serverResult?.user) {
-          const rawRole = serverResult.user.roles?.[0] || 'sales_rep';
-          const detectedRole = normalizeRole(rawRole);
-          loggedUser = {
-            id: serverResult.user.userId,
-            name: serverResult.user.name || parseNameFromEmail(rawEmail),
-            email: serverResult.user.email || rawEmail,
-            role: detectedRole,
-            roles: [detectedRole],
-            title: getRoleTitle(detectedRole),
-          };
-        }
-      } catch (serverErr) {
-        // Backend returned error or was unavailable; fallback to localized intelligent auth
-        console.warn('Backend authentication offline/rejected, logging in locally:', serverErr);
-      }
-
-      // 2. Localized role resolution if backend is offline or mock login
-      if (!loggedUser) {
-        let detectedRole: UserRole = 'sales_rep';
-
-        if (normalizedEmail.includes('manager') || normalizedEmail.includes('director') || normalizedEmail.includes('vikram')) {
-          detectedRole = 'sales_manager';
-        } else if (normalizedEmail.includes('finance') || normalizedEmail.includes('ops') || normalizedEmail.includes('ananya')) {
-          detectedRole = 'finance_ops';
-        } else if (normalizedEmail.includes('admin') || normalizedEmail.includes('rajesh')) {
-          detectedRole = 'admin';
-        } else if (normalizedEmail.includes('customer') || normalizedEmail.includes('client') || normalizedEmail.includes('sandeep')) {
-          detectedRole = 'customer';
-        }
-
-        const name = parseNameFromEmail(rawEmail);
-
-        loggedUser = {
-          id: `USR-${Date.now().toString().slice(-4)}`,
-          name,
-          email: rawEmail,
-          role: detectedRole,
-          roles: [detectedRole],
-          title: getRoleTitle(detectedRole),
-        };
-      }
-    } else {
-      loggedUser = user;
+    if (!creds?.email || !creds?.password) {
+      setIsLoading(false);
+      throw new Error('Email and password are required.');
     }
 
-    setUser(loggedUser);
-    setIsAuthenticated(true);
-    setIsLoading(false);
+    const rawEmail = creds.email.trim();
+    const normalizedEmail = rawEmail.toLowerCase();
+    const password = creds.password;
 
     try {
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(loggedUser));
-    } catch {
-      // ignore
-    }
+      const serverResult = await authApi.login({
+        email: normalizedEmail,
+        password,
+      });
 
-    return { user: loggedUser };
+      if (!serverResult?.user || !serverResult.accessToken) {
+        throw new Error('Authentication response did not contain valid user credentials.');
+      }
+
+      setAuthTokens(serverResult.accessToken, serverResult.refreshToken);
+
+      const rawRoles = serverResult.user.roles || [ROLES.SALES_REP];
+      const normalizedRoles = rawRoles.map(normalizeRole);
+      const primaryRole = getPrimaryRole(normalizedRoles);
+
+      const loggedUser: AuthContextUser = {
+        id: serverResult.user.userId,
+        name: serverResult.user.name || parseNameFromEmail(rawEmail),
+        email: serverResult.user.email || rawEmail,
+        role: primaryRole,
+        roles: normalizedRoles,
+        permissions: serverResult.user.permissions || [],
+        activeRole: primaryRole,
+        customer: serverResult.user.customerId
+          ? {
+              id: serverResult.user.customerId,
+              companyName: serverResult.user.customerName || 'Customer Account',
+            }
+          : undefined,
+        title: getRoleTitle(primaryRole),
+      };
+
+      setUser(loggedUser);
+      setIsAuthenticated(true);
+      setIsLoading(false);
+
+      try {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(loggedUser));
+        localStorage.setItem(ACTIVE_ROLE_KEY, loggedUser.activeRole);
+      } catch {
+        // ignore
+      }
+
+      return { user: loggedUser };
+    } catch (error) {
+      setIsLoading(false);
+      throw error;
+    }
   };
 
   const logout = async () => {
     setIsAuthenticated(false);
+    clearAuthTokens();
+    setUser(INITIAL_UNAUTHENTICATED_USER);
     try {
       localStorage.removeItem(AUTH_USER_KEY);
+      localStorage.removeItem(ACTIVE_ROLE_KEY);
       await authApi.logout();
     } catch {
       // ignore
@@ -202,62 +257,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (data?: unknown): Promise<{ user: AuthContextUser }> => {
     setIsLoading(true);
     const regData = data as { name?: string; email?: string; password?: string } | undefined;
-    let registeredUser: AuthContextUser | null = null;
 
-    if (regData?.email) {
-      const rawEmail = regData.email.trim();
-      const rawName = regData.name?.trim() || parseNameFromEmail(rawEmail);
-
-      try {
-        const serverResult = await authApi.register({
-          name: rawName,
-          email: rawEmail.toLowerCase(),
-          password: regData.password || '',
-        });
-
-        if (serverResult?.user) {
-          const rawRole = serverResult.user.roles?.[0] || 'sales_rep';
-          const detectedRole = normalizeRole(rawRole);
-          registeredUser = {
-            id: serverResult.user.userId,
-            name: serverResult.user.name,
-            email: serverResult.user.email,
-            role: detectedRole,
-            roles: [detectedRole],
-            title: getRoleTitle(detectedRole),
-          };
-        }
-      } catch (err) {
-        console.warn('Backend registration failed, creating local user session:', err);
-      }
-
-      if (!registeredUser) {
-        const detectedRole: UserRole = 'sales_rep';
-        registeredUser = {
-          id: `USR-${Date.now().toString().slice(-4)}`,
-          name: rawName,
-          email: rawEmail,
-          role: detectedRole,
-          roles: [detectedRole],
-          title: getRoleTitle(detectedRole),
-        };
-      }
-    } else {
-      registeredUser = user;
+    if (!regData?.email || !regData?.password) {
+      setIsLoading(false);
+      throw new Error('Email and password are required for registration.');
     }
 
-    setUser(registeredUser);
-    setIsAuthenticated(true);
-    setIsLoading(false);
+    const rawEmail = regData.email.trim();
+    const rawName = regData.name?.trim() || parseNameFromEmail(rawEmail);
 
     try {
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(registeredUser));
-    } catch {
-      // ignore
-    }
+      const serverResult = await authApi.register({
+        name: rawName,
+        email: rawEmail.toLowerCase(),
+        password: regData.password,
+      });
 
-    return { user: registeredUser };
+      if (!serverResult?.user || !serverResult.accessToken) {
+        throw new Error('Registration response did not contain valid user credentials.');
+      }
+
+      setAuthTokens(serverResult.accessToken, serverResult.refreshToken);
+
+      const rawRoles = serverResult.user.roles || [ROLES.CUSTOMER];
+      const normalizedRoles = rawRoles.map(normalizeRole);
+      const primaryRole = getPrimaryRole(normalizedRoles);
+
+      const registeredUser: AuthContextUser = {
+        id: serverResult.user.userId,
+        name: serverResult.user.name,
+        email: serverResult.user.email,
+        role: primaryRole,
+        roles: normalizedRoles,
+        permissions: serverResult.user.permissions || [],
+        activeRole: primaryRole,
+        title: getRoleTitle(primaryRole),
+      };
+
+      setUser(registeredUser);
+      setIsAuthenticated(true);
+      setIsLoading(false);
+
+      try {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(registeredUser));
+        localStorage.setItem(ACTIVE_ROLE_KEY, registeredUser.activeRole);
+      } catch {
+        // ignore
+      }
+
+      return { user: registeredUser };
+    } catch (error) {
+      setIsLoading(false);
+      throw error;
+    }
   };
+
+  const currentRole = user?.activeRole || user?.role || ROLES.SALES_REP;
 
   return (
     <AuthContext.Provider
@@ -265,14 +320,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         isAuthenticated,
         isLoading,
+        isInitializing,
         switchRole,
         login,
         logout,
         register,
-        isSalesRep: user.role === 'sales_rep',
-        isManager: user.role === 'sales_manager',
-        isFinance: user.role === 'finance_ops',
-        isAdmin: user.role === 'admin',
+        isSalesRep: currentRole === ROLES.SALES_REP,
+        isManager: currentRole === ROLES.SALES_MANAGER,
+        isFinance: currentRole === ROLES.FINANCE,
+        isAdmin: currentRole === ROLES.ADMIN,
+        isCustomer: currentRole === ROLES.CUSTOMER,
       }}
     >
       {children}

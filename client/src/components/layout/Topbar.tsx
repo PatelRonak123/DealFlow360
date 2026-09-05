@@ -1,30 +1,28 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bell, Search, LogOut, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { Bell, Search, LogOut, CheckCircle2, AlertTriangle, Clock, ChevronDown, Layers } from 'lucide-react';
 import { RoleBadge } from '@/components/common/RoleBadge';
 import { useAuth } from '@/features/auth';
 import { useCustomerProfile } from '@/features/customer-portal/hooks/useCustomerProfile';
 import { useNavigate } from 'react-router-dom';
+import { normalizeRole, getDashboardPathForRole, ROLES } from '@/lib/accessControl';
 import { UserRole } from '@/types/Auth';
 
 export function Topbar({ notificationCount = 3 }: { notificationCount?: number }) {
-  const { user, isLoading: isAuthLoading, logout } = useAuth();
+  const { user, isLoading: isAuthLoading, logout, switchRole } = useAuth();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const roleRef = useRef<HTMLDivElement>(null);
 
-  const rawRole = user?.roles?.[0]?.toLowerCase() || user?.role?.toLowerCase();
-  const role: UserRole =
-    rawRole === 'sales_representative' || rawRole === 'sales_rep'
-      ? 'sales_rep'
-      : rawRole === 'sales_manager'
-        ? 'sales_manager'
-        : rawRole === 'finance_ops' || rawRole === 'finance'
-          ? 'finance_ops'
-          : rawRole === 'admin'
-            ? 'admin'
-            : 'customer';
+  const activeRole = normalizeRole(user?.activeRole || user?.role || ROLES.SALES_REP);
+  const isCustomer = activeRole === ROLES.CUSTOMER;
 
-  const isCustomer = role === 'customer';
+  // Available roles for switching: All assigned user roles, or full set if Admin
+  const availableRoles: UserRole[] =
+    activeRole === ROLES.ADMIN
+      ? [ROLES.ADMIN, ROLES.SALES_MANAGER, ROLES.SALES_REP, ROLES.FINANCE, ROLES.CUSTOMER]
+      : (user?.roles && user.roles.length > 0 ? user.roles : [activeRole]);
 
   // If customer role and user?.name is not yet known, optionally fetch profile data
   const { data: customerProfile, isLoading: isProfileLoading } = useCustomerProfile({
@@ -45,11 +43,14 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
     displayName = isCustomer ? 'Customer' : 'User';
   }
 
-  // Close notifications on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
+      }
+      if (roleRef.current && !roleRef.current.contains(event.target as Node)) {
+        setShowRoleSwitcher(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -59,6 +60,13 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
   const handleLogout = async () => {
     await logout();
     navigate('/login', { replace: true });
+  };
+
+  const handleSwitchRole = (newRole: UserRole) => {
+    switchRole(newRole);
+    setShowRoleSwitcher(false);
+    const targetDashboard = getDashboardPathForRole(newRole);
+    navigate(targetDashboard);
   };
 
   const notifications = [
@@ -158,8 +166,54 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
           )}
         </div>
 
-        {/* User Role Badge */}
-        <RoleBadge role={user?.role || role} />
+        {/* User Role Badge / Workspace Switcher */}
+        <div className="relative" ref={roleRef}>
+          {availableRoles.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
+              className="flex items-center gap-1.5 cursor-pointer rounded-lg hover:opacity-90 transition"
+              title="Click to switch active workspace role"
+            >
+              <RoleBadge role={activeRole} />
+              <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+            </button>
+          ) : (
+            <RoleBadge role={activeRole} />
+          )}
+
+          {showRoleSwitcher && availableRoles.length > 1 && (
+            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-[#e7ebf7] bg-white p-2 shadow-xl z-50 animate-in fade-in zoom-in-95">
+              <div className="px-2.5 py-1.5 border-b border-gray-100 mb-1 flex items-center gap-2">
+                <Layers className="h-3.5 w-3.5 text-gray-400" />
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  Switch Workspace
+                </span>
+              </div>
+              <div className="space-y-1">
+                {availableRoles.map((r) => {
+                  const norm = normalizeRole(r);
+                  const isCurrent = norm === activeRole;
+                  return (
+                    <button
+                      key={norm}
+                      type="button"
+                      onClick={() => handleSwitchRole(norm)}
+                      className={`flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-left transition cursor-pointer ${
+                        isCurrent
+                          ? 'bg-blue-50 text-[#3568ed] font-bold'
+                          : 'text-[#17213a] hover:bg-gray-50'
+                      }`}
+                    >
+                      <span>{norm.replace(/_/g, ' ')}</span>
+                      {isCurrent && <span className="h-1.5 w-1.5 rounded-full bg-[#3568ed]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* User Profile Pill */}
         <div className="flex items-center gap-2.5 pl-1">
@@ -174,7 +228,7 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
           <div className="hidden text-left lg:block">
             <p className="text-xs font-bold text-[#17213a] leading-none">{displayName}</p>
             <p className="mt-1 text-[10px] font-medium text-[#71809f] leading-none">
-              {user?.title || role.replace('_', ' ')}
+              {user?.title || activeRole.replace(/_/g, ' ')}
             </p>
           </div>
         </div>
@@ -193,5 +247,3 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
     </header>
   );
 }
-
-export default Topbar;

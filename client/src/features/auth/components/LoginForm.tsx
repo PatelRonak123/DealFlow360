@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { validateLogin } from '../schemas/auth.schema';
 import { showProgressToast } from './ProgressToast';
+import { getDashboardPathForRole } from '@/lib/accessControl';
 
 export const LoginForm: React.FC = () => {
   const navigate = useNavigate();
@@ -54,7 +55,8 @@ export const LoginForm: React.FC = () => {
         duration: 3000,
       });
 
-      navigate('/', { replace: true });
+      const targetDashboard = getDashboardPathForRole(result.user.activeRole || result.user.role);
+      navigate(targetDashboard, { replace: true });
     } catch (err: unknown) {
       let message = 'Unable to connect to authentication server.';
 

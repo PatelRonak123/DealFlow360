@@ -1,26 +1,25 @@
-import React from 'react';
 import { UserRole } from '@/types/Auth';
-import { ShieldCheck, Briefcase, Calculator, Building2 } from 'lucide-react';
-
-const roleLabels: Record<UserRole, string> = {
-  sales_rep: 'Sales Representative',
-  sales_manager: 'Sales Manager',
-  finance_ops: 'Finance & Ops',
-  customer: 'Customer',
-  admin: 'Administrator',
+import { normalizeRole, ROLES } from '@/lib/accessControl';
+const roleLabels: Record<string, string> = {
+  [ROLES.ADMIN]: 'Administrator',
+  [ROLES.SALES_REP]: 'Sales Representative',
+  [ROLES.SALES_MANAGER]: 'Sales Manager',
+  [ROLES.FINANCE]: 'Finance',
+  [ROLES.CUSTOMER]: 'Customer',
 };
 
-const roleStyles: Record<UserRole, string> = {
-  sales_rep: 'bg-blue-50 text-[#2555d4] border-blue-200',
-  sales_manager: 'bg-purple-50 text-purple-700 border-purple-200',
-  finance_ops: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  customer: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  admin: 'bg-slate-100 text-slate-800 border-slate-300',
+const roleStyles: Record<string, string> = {
+  [ROLES.ADMIN]: 'bg-slate-100 text-slate-800 border-slate-300',
+  [ROLES.SALES_REP]: 'bg-blue-50 text-[#2555d4] border-blue-200',
+  [ROLES.SALES_MANAGER]: 'bg-purple-50 text-purple-700 border-purple-200',
+  [ROLES.FINANCE]: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  [ROLES.CUSTOMER]: 'bg-indigo-50 text-indigo-700 border-indigo-200',
 };
 
-export function RoleBadge({ role, className = '' }: { role: UserRole; className?: string }) {
-  const style = roleStyles[role] || roleStyles.sales_rep;
-  const label = roleLabels[role] || role;
+export function RoleBadge({ role, className = '' }: { role: UserRole | string; className?: string }) {
+  const norm = normalizeRole(role);
+  const style = roleStyles[norm] || roleStyles[ROLES.SALES_REP];
+  const label = roleLabels[norm] || norm;
 
   return (
     <span

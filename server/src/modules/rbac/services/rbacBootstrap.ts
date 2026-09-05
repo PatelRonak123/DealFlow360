@@ -2,7 +2,7 @@ import { db } from '../../../database/db.js';
 import { roles, permissions, rolePermissions } from '../../../database/schema/index.js';
 import { Roles, RoleName } from '../constants/roles.js';
 import { Permissions, PermissionName } from '../constants/permissions.js';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 interface RoleDefinition {
   name: RoleName;
@@ -35,7 +35,12 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       Permissions.QUOTATION_SUBMIT,
       Permissions.QUOTATION_EVALUATE,
       Permissions.APPROVAL_READ,
+      Permissions.RECOMMENDATION_READ,
+      Permissions.RECOMMENDATION_ACCEPT,
+      Permissions.RECOMMENDATION_DISMISS,
       Permissions.INVENTORY_READ,
+      Permissions.WAREHOUSE_READ,
+      Permissions.FULFILLMENT_READ,
     ],
   },
   {
@@ -66,13 +71,26 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       Permissions.APPROVAL_APPROVE,
       Permissions.APPROVAL_REJECT,
       Permissions.DISCOUNT_APPROVE,
+      Permissions.RECOMMENDATION_READ,
+      Permissions.RECOMMENDATION_ACCEPT,
+      Permissions.RECOMMENDATION_DISMISS,
+      Permissions.RECOMMENDATION_MANAGE,
+      Permissions.RECOMMENDATION_RULE_CREATE,
+      Permissions.RECOMMENDATION_RULE_READ,
+      Permissions.RECOMMENDATION_RULE_UPDATE,
+      Permissions.RECOMMENDATION_RULE_DELETE,
       Permissions.REPORTS_VIEW,
       Permissions.INVENTORY_READ,
+      Permissions.WAREHOUSE_READ,
+      Permissions.FULFILLMENT_READ,
+      Permissions.FULFILLMENT_CREATE,
+      Permissions.FULFILLMENT_UPDATE,
+      Permissions.FULFILLMENT_CANCEL,
     ],
   },
   {
-    name: Roles.FINANCE_OPERATIONS,
-    description: 'Financial and operations officer with billing and pricing oversight',
+    name: Roles.FINANCE,
+    description: 'Finance officer with billing, pricing oversight, and discount approvals',
     permissions: [
       Permissions.USER_READ,
       Permissions.CUSTOMER_TIER_READ,
@@ -93,7 +111,16 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
       Permissions.BILLING_READ,
       Permissions.BILLING_MANAGE,
       Permissions.PAYMENT_PROCESS,
+      Permissions.WAREHOUSE_READ,
+      Permissions.WAREHOUSE_MANAGE,
       Permissions.INVENTORY_READ,
+      Permissions.INVENTORY_MANAGE,
+      Permissions.INVENTORY_ADJUST,
+      Permissions.FULFILLMENT_READ,
+      Permissions.FULFILLMENT_CREATE,
+      Permissions.FULFILLMENT_UPDATE,
+      Permissions.FULFILLMENT_CANCEL,
+      Permissions.FULFILLMENT_COMPLETE,
       Permissions.FULFILLMENT_MANAGE,
       Permissions.REPORTS_VIEW,
       Permissions.AUDIT_VIEW,
@@ -112,28 +139,34 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
 export async function bootstrapRbac(): Promise<void> {
   console.log('[RBAC] Starting idempotent RBAC bootstrap...');
 
-  // 1. Seed or update permissions
+  // 1. Seed or update permissions in bulk
   const allPermissions = Object.values(Permissions);
-  for (const permName of allPermissions) {
-    const existing = await db.query.permissions.findFirst({
-      where: eq(permissions.name, permName),
-    });
+  const existingPerms = await db.select().from(permissions);
+  const existingPermNames = new Set(existingPerms.map((p) => p.name));
 
-    if (!existing) {
-      await db.insert(permissions).values({
-        name: permName,
-        description: `Permission for ${permName}`,
-      });
-    }
+  const newPerms = allPermissions
+    .filter((name) => !existingPermNames.has(name))
+    .map((name) => ({
+      name,
+      description: `Permission for ${name}`,
+    }));
+
+  if (newPerms.length > 0) {
+    await db.insert(permissions).values(newPerms);
   }
 
-  // 2. Seed or update roles & assign role_permissions
-  for (const roleDef of ROLE_DEFINITIONS) {
-    let roleRecord = await db.query.roles.findFirst({
-      where: eq(roles.name, roleDef.name),
-    });
+  // Refresh permissions map
+  const allPermsList = await db.select().from(permissions);
+  const permMap = new Map(allPermsList.map((p) => [p.name, p.id]));
 
-    if (!roleRecord) {
+  // 2. Seed or update roles & assign role_permissions
+  const existingRoles = await db.select().from(roles);
+  const roleMap = new Map(existingRoles.map((r) => [r.name, r.id]));
+
+  for (const roleDef of ROLE_DEFINITIONS) {
+    let roleId = roleMap.get(roleDef.name);
+
+    if (!roleId) {
       const [inserted] = await db
         .insert(roles)
         .values({
@@ -141,30 +174,27 @@ export async function bootstrapRbac(): Promise<void> {
           description: roleDef.description,
         })
         .returning();
-      roleRecord = inserted;
+      roleId = inserted.id;
+      roleMap.set(roleDef.name, roleId);
     }
 
-    // Assign permissions to this role
-    for (const permName of roleDef.permissions) {
-      const permRecord = await db.query.permissions.findFirst({
-        where: eq(permissions.name, permName),
-      });
+    // Existing role permissions
+    const currentMappings = await db
+      .select()
+      .from(rolePermissions)
+      .where(eq(rolePermissions.roleId, roleId));
+    const currentPermIds = new Set(currentMappings.map((m) => m.permissionId));
 
-      if (permRecord) {
-        const existingMapping = await db.query.rolePermissions.findFirst({
-          where: and(
-            eq(rolePermissions.roleId, roleRecord.id),
-            eq(rolePermissions.permissionId, permRecord.id)
-          ),
-        });
+    const toInsert = roleDef.permissions
+      .map((pName) => permMap.get(pName))
+      .filter((pId): pId is string => Boolean(pId) && !currentPermIds.has(pId!))
+      .map((permissionId) => ({
+        roleId,
+        permissionId,
+      }));
 
-        if (!existingMapping) {
-          await db.insert(rolePermissions).values({
-            roleId: roleRecord.id,
-            permissionId: permRecord.id,
-          });
-        }
-      }
+    if (toInsert.length > 0) {
+      await db.insert(rolePermissions).values(toInsert);
     }
   }
 
