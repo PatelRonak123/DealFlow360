@@ -1,0 +1,82 @@
+import express, { Express, Request, Response } from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { appConfig } from './config/app.js';
+import { requestLogger, errorHandler } from './common/middleware/index.js';
+import { NotFoundError } from './common/errors/index.js';
+
+// Domain module routers
+import { authRouter } from './modules/auth/index.js';
+import { usersRouter } from './modules/users/index.js';
+import { customersRouter } from './modules/customers/index.js';
+import { productsRouter } from './modules/products/index.js';
+import { pricingRouter } from './modules/pricing/index.js';
+import { discountGovernanceRouter } from './modules/discount-governance/index.js';
+import { quotationsRouter } from './modules/quotations/index.js';
+import { approvalsRouter } from './modules/approvals/index.js';
+import { upsellCrossSellRouter } from './modules/upsell-cross-sell/index.js';
+import { inventoryRouter } from './modules/inventory/index.js';
+import { warehousesRouter } from './modules/warehouses/index.js';
+import { fulfillmentRouter } from './modules/fulfillment/index.js';
+import { subscriptionsRouter } from './modules/subscriptions/index.js';
+import { billingRouter } from './modules/billing/index.js';
+import { paymentsRouter } from './modules/payments/index.js';
+import { customerPortalRouter } from './modules/customer-portal/index.js';
+import { dealHealthRouter } from './modules/deal-health/index.js';
+import { notificationsRouter } from './modules/notifications/index.js';
+import { auditLogsRouter } from './modules/audit-logs/index.js';
+import { reportsRouter } from './modules/reports/index.js';
+
+export function createApp(): Express {
+  const app = express();
+
+  // Global Security & Logging Middleware
+  app.use(helmet());
+  app.use(cors(appConfig.cors));
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(requestLogger);
+
+  // Health Check Endpoint
+  app.get('/health', (_req: Request, res: Response) => {
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      service: appConfig.name,
+      version: appConfig.version,
+    });
+  });
+
+  // Mount Domain Module API Routers under /api/v1
+  const prefix = appConfig.apiPrefix;
+  app.use(`${prefix}/auth`, authRouter);
+  app.use(`${prefix}/users`, usersRouter);
+  app.use(`${prefix}/customers`, customersRouter);
+  app.use(`${prefix}/products`, productsRouter);
+  app.use(`${prefix}/pricing`, pricingRouter);
+  app.use(`${prefix}/discount-governance`, discountGovernanceRouter);
+  app.use(`${prefix}/quotations`, quotationsRouter);
+  app.use(`${prefix}/approvals`, approvalsRouter);
+  app.use(`${prefix}/upsell-cross-sell`, upsellCrossSellRouter);
+  app.use(`${prefix}/inventory`, inventoryRouter);
+  app.use(`${prefix}/warehouses`, warehousesRouter);
+  app.use(`${prefix}/fulfillment`, fulfillmentRouter);
+  app.use(`${prefix}/subscriptions`, subscriptionsRouter);
+  app.use(`${prefix}/billing`, billingRouter);
+  app.use(`${prefix}/payments`, paymentsRouter);
+  app.use(`${prefix}/customer-portal`, customerPortalRouter);
+  app.use(`${prefix}/deal-health`, dealHealthRouter);
+  app.use(`${prefix}/notifications`, notificationsRouter);
+  app.use(`${prefix}/audit-logs`, auditLogsRouter);
+  app.use(`${prefix}/reports`, reportsRouter);
+
+  // 404 Route Catch-all
+  app.use((_req: Request, _res: Response) => {
+    throw new NotFoundError('API endpoint not found');
+  });
+
+  // Global Error Handler
+  app.use(errorHandler);
+
+  return app;
+}
