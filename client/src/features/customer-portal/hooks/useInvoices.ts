@@ -1,14 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customerPortalApi } from '../api/customerPortalApi';
+import { CustomerPortalPaginationParams } from '../types';
 import { CUSTOMER_DASHBOARD_QUERY_KEY } from './useCustomerDashboard';
 
 export const CUSTOMER_INVOICES_QUERY_KEY = ['customer-portal', 'invoices'] as const;
 export const CUSTOMER_PAYMENTS_QUERY_KEY = ['customer-portal', 'payments'] as const;
 
-export function useInvoices() {
+export function useInvoices(params?: CustomerPortalPaginationParams) {
   return useQuery({
-    queryKey: CUSTOMER_INVOICES_QUERY_KEY,
-    queryFn: () => customerPortalApi.getInvoices(),
+    queryKey: [...CUSTOMER_INVOICES_QUERY_KEY, params?.search, params?.status, params?.page, params?.limit],
+    queryFn: () => customerPortalApi.getInvoices(params),
   });
 }
 
@@ -20,10 +21,10 @@ export function useInvoice(id: string) {
   });
 }
 
-export function usePayments() {
+export function usePayments(params?: CustomerPortalPaginationParams) {
   return useQuery({
-    queryKey: CUSTOMER_PAYMENTS_QUERY_KEY,
-    queryFn: () => customerPortalApi.getPayments(),
+    queryKey: [...CUSTOMER_PAYMENTS_QUERY_KEY, params?.search, params?.page, params?.limit],
+    queryFn: () => customerPortalApi.getPayments(params),
   });
 }
 

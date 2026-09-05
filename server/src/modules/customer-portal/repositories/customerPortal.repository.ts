@@ -19,6 +19,8 @@ import {
   CustomerProfile,
   NegotiationHistoryEntry,
   ApprovalStep,
+  CustomerPortalPaginationParams,
+  CustomerPortalPaginatedResult,
 } from '../types/customerPortal.types.js';
 import { notificationsService } from '../../notifications/services/notifications.service.js';
 
@@ -433,16 +435,16 @@ export class CustomerPortalRepository {
   }
 
   /**
-   * Find quotations for customer from PostgreSQL database
+   * Find quotations for customer from PostgreSQL database with pagination and search optimization
    */
   async findQuotations(
-    query?: { search?: string; status?: string },
+    query?: CustomerPortalPaginationParams,
     customerId?: string,
     userEmail?: string
-  ): Promise<CustomerQuotationDetail[]> {
+  ): Promise<CustomerPortalPaginatedResult<CustomerQuotationDetail>> {
     const customer = await this.resolveCustomer(customerId, userEmail);
     if (!customer) {
-      return [];
+      return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     }
 
     try {
@@ -452,11 +454,12 @@ export class CustomerPortalRepository {
         conditions.push(eq(quotations.status, query.status));
       }
 
-      if (query?.search) {
+      if (query?.search && query.search.trim()) {
+        const term = query.search.trim();
         conditions.push(
           or(
-            ilike(quotations.quotationNumber, `%${query.search}%`),
-            ilike(quotations.notes, `%${query.search}%`)
+            ilike(quotations.quotationNumber, `%${term}%`),
+            ilike(quotations.notes, `%${term}%`)
           )!
         );
       }
@@ -476,11 +479,41 @@ export class CustomerPortalRepository {
 
       const store = this.getStore(customer.id);
 
-      return rows.map((r) =>
+      let mapped = rows.map((r) =>
         this.mapDbQuotationToDetail(r, customer, store.negotiationHistory[r.id] || [])
       );
+
+      // In-memory SKU / Product Name fallback search if term wasn't caught by SQL alone
+      if (query?.search && query.search.trim()) {
+        const s = query.search.trim().toLowerCase();
+        mapped = mapped.filter(
+          (m) =>
+            m.quotationNumber.toLowerCase().includes(s) ||
+            (m.notes && m.notes.toLowerCase().includes(s)) ||
+            m.items.some(
+              (it) =>
+                it.productName.toLowerCase().includes(s) ||
+                it.sku.toLowerCase().includes(s)
+            )
+        );
+      }
+
+      const total = mapped.length;
+      const page = Math.max(1, Number(query?.page) || 1);
+      const limit = Math.max(1, Number(query?.limit) || 10);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const offset = (page - 1) * limit;
+      const paginatedItems = mapped.slice(offset, offset + limit);
+
+      return {
+        items: paginatedItems,
+        total,
+        page,
+        limit,
+        totalPages,
+      };
     } catch {
-      return [];
+      return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     }
   }
 
@@ -786,7 +819,8 @@ export class CustomerPortalRepository {
       };
     }
 
-    const quotes = await this.findQuotations(undefined, customer.id, userEmail);
+    const quotesResult = await this.findQuotations({ page: 1, limit: 100 }, customer.id, userEmail);
+    const quotes = quotesResult.items;
     const store = this.getStore(customer.id);
 
     const activeQuotations = quotes.filter(
@@ -843,11 +877,50 @@ export class CustomerPortalRepository {
     };
   }
 
-  async findOrders(customerId?: string, userEmail?: string): Promise<CustomerOrder[]> {
+  async findOrders(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerOrder>> {
     const customer = await this.resolveCustomer(customerId, userEmail);
-    if (!customer) return [];
+    if (!customer) return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     const store = this.getStore(customer.id);
-    return store.orders;
+    let list = store.orders;
+
+    if (query?.status && query.status !== 'ALL') {
+      list = list.filter(
+        (o) => o.fulfillmentStatus === query.status || o.paymentStatus === query.status
+      );
+    }
+
+    if (query?.search && query.search.trim()) {
+      const s = query.search.trim().toLowerCase();
+      list = list.filter(
+        (o) =>
+          o.orderNumber.toLowerCase().includes(s) ||
+          o.quotationNumber.toLowerCase().includes(s) ||
+          o.items.some(
+            (it) =>
+              it.productName.toLowerCase().includes(s) ||
+              it.sku.toLowerCase().includes(s)
+          )
+      );
+    }
+
+    const total = list.length;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 10);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
+    const paginatedItems = list.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   async findOrderById(id: string, customerId?: string, userEmail?: string): Promise<CustomerOrder | undefined> {
@@ -857,11 +930,44 @@ export class CustomerPortalRepository {
     return store.orders.find((o) => o.id === id || o.orderNumber === id);
   }
 
-  async findInvoices(customerId?: string, userEmail?: string): Promise<CustomerInvoice[]> {
+  async findInvoices(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerInvoice>> {
     const customer = await this.resolveCustomer(customerId, userEmail);
-    if (!customer) return [];
+    if (!customer) return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     const store = this.getStore(customer.id);
-    return store.invoices;
+    let list = store.invoices;
+
+    if (query?.status && query.status !== 'ALL') {
+      list = list.filter((inv) => inv.status === query.status);
+    }
+
+    if (query?.search && query.search.trim()) {
+      const s = query.search.trim().toLowerCase();
+      list = list.filter(
+        (inv) =>
+          inv.invoiceNumber.toLowerCase().includes(s) ||
+          inv.orderNumber.toLowerCase().includes(s) ||
+          inv.quotationNumber.toLowerCase().includes(s)
+      );
+    }
+
+    const total = list.length;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 10);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
+    const paginatedItems = list.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   async findInvoiceById(id: string, customerId?: string, userEmail?: string): Promise<CustomerInvoice | undefined> {
@@ -927,11 +1033,41 @@ export class CustomerPortalRepository {
     return { invoice, payment };
   }
 
-  async findPayments(customerId?: string, userEmail?: string): Promise<CustomerPayment[]> {
+  async findPayments(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerPayment>> {
     const customer = await this.resolveCustomer(customerId, userEmail);
-    if (!customer) return [];
+    if (!customer) return { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
     const store = this.getStore(customer.id);
-    return store.payments;
+    let list = store.payments;
+
+    if (query?.search && query.search.trim()) {
+      const s = query.search.trim().toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.paymentNumber.toLowerCase().includes(s) ||
+          p.invoiceNumber.toLowerCase().includes(s) ||
+          p.orderNumber.toLowerCase().includes(s) ||
+          p.transactionReference.toLowerCase().includes(s)
+      );
+    }
+
+    const total = list.length;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 10);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
+    const paginatedItems = list.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   async findSubscriptions(customerId?: string, userEmail?: string): Promise<CustomerSubscription[]> {

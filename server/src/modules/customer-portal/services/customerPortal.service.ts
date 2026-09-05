@@ -12,6 +12,8 @@ import {
   CustomerNotification,
   CustomerProfile,
   NegotiationSubmissionInput,
+  CustomerPortalPaginationParams,
+  CustomerPortalPaginatedResult,
 } from '../types/customerPortal.types.js';
 import { NotFoundError, BadRequestError } from '../../../common/errors/index.js';
 
@@ -23,10 +25,10 @@ export class CustomerPortalService {
   }
 
   async listQuotations(
-    query?: { search?: string; status?: string },
+    query?: CustomerPortalPaginationParams,
     customerId?: string,
     userEmail?: string
-  ): Promise<CustomerQuotationDetail[]> {
+  ): Promise<CustomerPortalPaginatedResult<CustomerQuotationDetail>> {
     return this.repository.findQuotations(query, customerId, userEmail);
   }
 
@@ -63,8 +65,12 @@ export class CustomerPortalService {
     return this.repository.confirmQuotation(quotationId, customerId, userEmail);
   }
 
-  async listOrders(customerId?: string, userEmail?: string): Promise<CustomerOrder[]> {
-    return this.repository.findOrders(customerId, userEmail);
+  async listOrders(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerOrder>> {
+    return this.repository.findOrders(query, customerId, userEmail);
   }
 
   async getOrderById(id: string, customerId?: string, userEmail?: string): Promise<CustomerOrder> {
@@ -75,8 +81,12 @@ export class CustomerPortalService {
     return order;
   }
 
-  async listInvoices(customerId?: string, userEmail?: string): Promise<CustomerInvoice[]> {
-    return this.repository.findInvoices(customerId, userEmail);
+  async listInvoices(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerInvoice>> {
+    return this.repository.findInvoices(query, customerId, userEmail);
   }
 
   async getInvoiceById(id: string, customerId?: string, userEmail?: string): Promise<CustomerInvoice> {
@@ -96,8 +106,12 @@ export class CustomerPortalService {
     return this.repository.payInvoice(invoiceId, input, customerId, userEmail);
   }
 
-  async listPayments(customerId?: string, userEmail?: string): Promise<CustomerPayment[]> {
-    return this.repository.findPayments(customerId, userEmail);
+  async listPayments(
+    query?: CustomerPortalPaginationParams,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerPortalPaginatedResult<CustomerPayment>> {
+    return this.repository.findPayments(query, customerId, userEmail);
   }
 
   async listSubscriptions(customerId?: string, userEmail?: string): Promise<CustomerSubscription[]> {

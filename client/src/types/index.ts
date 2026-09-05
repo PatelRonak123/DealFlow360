@@ -10,7 +10,11 @@ export interface ApiResponse<T = unknown> {
   meta?: {
     page?: number;
     limit?: number;
+    pageSize?: number;
     total?: number;
+    totalPages?: number;
+    hasNextPage?: boolean;
+    hasPreviousPage?: boolean;
   };
   timestamp: string;
 }
