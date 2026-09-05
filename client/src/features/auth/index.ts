@@ -1,7 +1,6 @@
 export * from './types';
 export * from './api/authApi';
 export * from './context/AuthContext';
-export * from './hooks/useAuth';
 export * from './components';
 export * from './schemas/auth.schema';
 export * from './routes';
