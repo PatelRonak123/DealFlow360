@@ -823,6 +823,13 @@ Customers represent corporate client accounts associated with designated Custome
     "phone": "+91-9123456789",
     "customerTierId": "77e1b5f0-629a-4c22-9909-08a8a4b08b35",
     "status": "INACTIVE",
+
+
+
+
+
+
+    
     "createdAt": "2026-09-05T08:00:00.000Z",
     "updatedAt": "2026-09-05T08:15:00.000Z"
   },
