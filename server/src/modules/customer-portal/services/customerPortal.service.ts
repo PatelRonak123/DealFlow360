@@ -18,19 +18,20 @@ import { NotFoundError, BadRequestError } from '../../../common/errors/index.js'
 export class CustomerPortalService {
   constructor(private readonly repository: CustomerPortalRepository = customerPortalRepository) {}
 
-  async getDashboard(customerId?: string): Promise<CustomerDashboardMetrics> {
-    return this.repository.getDashboardMetrics(customerId);
+  async getDashboard(customerId?: string, userEmail?: string): Promise<CustomerDashboardMetrics> {
+    return this.repository.getDashboardMetrics(customerId, userEmail);
   }
 
   async listQuotations(
     query?: { search?: string; status?: string },
-    customerId?: string
+    customerId?: string,
+    userEmail?: string
   ): Promise<CustomerQuotationDetail[]> {
-    return this.repository.findQuotations(query, customerId);
+    return this.repository.findQuotations(query, customerId, userEmail);
   }
 
-  async getQuotationById(id: string, customerId?: string): Promise<CustomerQuotationDetail> {
-    const quotation = await this.repository.findQuotationById(id, customerId);
+  async getQuotationById(id: string, customerId?: string, userEmail?: string): Promise<CustomerQuotationDetail> {
+    const quotation = await this.repository.findQuotationById(id, customerId, userEmail);
     if (!quotation) {
       throw new NotFoundError(`Quotation with ID '${id}' not found`);
     }
@@ -40,43 +41,46 @@ export class CustomerPortalService {
   async submitNegotiation(
     quotationId: string,
     input: NegotiationSubmissionInput,
-    customerId?: string
+    customerId?: string,
+    userEmail?: string,
+    userName?: string
   ): Promise<CustomerQuotationDetail> {
     if (input.requestedDiscountPercent < 0 || input.requestedDiscountPercent > 100) {
       throw new BadRequestError('Requested discount must be between 0% and 100%');
     }
-    return this.repository.submitNegotiation(quotationId, input, customerId);
+    return this.repository.submitNegotiation(quotationId, input, customerId, userEmail, userName);
   }
 
   async confirmQuotation(
     quotationId: string,
-    customerId?: string
+    customerId?: string,
+    userEmail?: string
   ): Promise<{ quotation: CustomerQuotationDetail; order: CustomerOrder }> {
-    const quote = await this.getQuotationById(quotationId, customerId);
+    const quote = await this.getQuotationById(quotationId, customerId, userEmail);
     if (quote.status === 'CONFIRMED') {
       throw new BadRequestError(`Quotation ${quote.quotationNumber} is already confirmed`);
     }
-    return this.repository.confirmQuotation(quotationId, customerId);
+    return this.repository.confirmQuotation(quotationId, customerId, userEmail);
   }
 
-  async listOrders(customerId?: string): Promise<CustomerOrder[]> {
-    return this.repository.findOrders(customerId);
+  async listOrders(customerId?: string, userEmail?: string): Promise<CustomerOrder[]> {
+    return this.repository.findOrders(customerId, userEmail);
   }
 
-  async getOrderById(id: string, customerId?: string): Promise<CustomerOrder> {
-    const order = await this.repository.findOrderById(id, customerId);
+  async getOrderById(id: string, customerId?: string, userEmail?: string): Promise<CustomerOrder> {
+    const order = await this.repository.findOrderById(id, customerId, userEmail);
     if (!order) {
       throw new NotFoundError(`Order with ID '${id}' not found`);
     }
     return order;
   }
 
-  async listInvoices(customerId?: string): Promise<CustomerInvoice[]> {
-    return this.repository.findInvoices(customerId);
+  async listInvoices(customerId?: string, userEmail?: string): Promise<CustomerInvoice[]> {
+    return this.repository.findInvoices(customerId, userEmail);
   }
 
-  async getInvoiceById(id: string, customerId?: string): Promise<CustomerInvoice> {
-    const invoice = await this.repository.findInvoiceById(id, customerId);
+  async getInvoiceById(id: string, customerId?: string, userEmail?: string): Promise<CustomerInvoice> {
+    const invoice = await this.repository.findInvoiceById(id, customerId, userEmail);
     if (!invoice) {
       throw new NotFoundError(`Invoice with ID '${id}' not found`);
     }
@@ -86,29 +90,30 @@ export class CustomerPortalService {
   async payInvoice(
     invoiceId: string,
     input: { amount: string; paymentMethod: 'CREDIT_CARD' | 'BANK_TRANSFER' | 'NET_BANKING' | 'UPI' },
-    customerId?: string
+    customerId?: string,
+    userEmail?: string
   ): Promise<{ invoice: CustomerInvoice; payment: CustomerPayment }> {
-    return this.repository.payInvoice(invoiceId, input, customerId);
+    return this.repository.payInvoice(invoiceId, input, customerId, userEmail);
   }
 
-  async listPayments(customerId?: string): Promise<CustomerPayment[]> {
-    return this.repository.findPayments(customerId);
+  async listPayments(customerId?: string, userEmail?: string): Promise<CustomerPayment[]> {
+    return this.repository.findPayments(customerId, userEmail);
   }
 
-  async listSubscriptions(customerId?: string): Promise<CustomerSubscription[]> {
-    return this.repository.findSubscriptions(customerId);
+  async listSubscriptions(customerId?: string, userEmail?: string): Promise<CustomerSubscription[]> {
+    return this.repository.findSubscriptions(customerId, userEmail);
   }
 
-  async getSubscriptionById(id: string, customerId?: string): Promise<CustomerSubscription> {
-    const sub = await this.repository.findSubscriptionById(id, customerId);
+  async getSubscriptionById(id: string, customerId?: string, userEmail?: string): Promise<CustomerSubscription> {
+    const sub = await this.repository.findSubscriptionById(id, customerId, userEmail);
     if (!sub) {
       throw new NotFoundError(`Subscription with ID '${id}' not found`);
     }
     return sub;
   }
 
-  async listNotifications(customerId?: string): Promise<CustomerNotification[]> {
-    return this.repository.findNotifications(customerId);
+  async listNotifications(customerId?: string, userEmail?: string): Promise<CustomerNotification[]> {
+    return this.repository.findNotifications(customerId, userEmail);
   }
 
   async markNotificationRead(id: string): Promise<boolean> {
@@ -119,14 +124,18 @@ export class CustomerPortalService {
     return this.repository.markAllNotificationsAsRead();
   }
 
-  async getProfile(customerId?: string): Promise<CustomerProfile> {
-    return this.repository.getProfile(customerId);
+  async getProfile(customerId?: string, userEmail?: string, userName?: string): Promise<CustomerProfile> {
+    return this.repository.getProfile(customerId, userEmail, userName);
   }
 
-  async updateProfile(data: Partial<CustomerProfile>, customerId?: string): Promise<CustomerProfile> {
-    return this.repository.updateProfile(data, customerId);
+  async updateProfile(
+    data: Partial<CustomerProfile>,
+    customerId?: string,
+    userEmail?: string,
+    userName?: string
+  ): Promise<CustomerProfile> {
+    return this.repository.updateProfile(data, customerId, userEmail, userName);
   }
 }
 
 export const customerPortalService = new CustomerPortalService();
-

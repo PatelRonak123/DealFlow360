@@ -16,14 +16,12 @@ import {
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { useCustomers } from '@/features/customers/hooks/useCustomers';
+import { CustomerSearchCombobox } from '@/features/customers/components/CustomerSearchCombobox';
 import { useProducts, usePriceLists } from '@/features/products/hooks/useProducts';
 import { useCreateQuotationMutation } from '../hooks/useQuotationsQuery';
 import { BackendProductSummary } from '../types/quotationApi.types';
 import { formatINR, formatPercent } from '@/utils/formatters';
-import { apiClient, getAccessToken } from '@/api/apiClient';
 
 interface BuilderLineItem {
   product: BackendProductSummary;
@@ -40,39 +38,21 @@ export const QuoteBuilderPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const preselectedCustomerId = searchParams.get('customerId');
 
-  // 1. Fetch Real Customers, Products, and Price Lists from Backend
-  const { data: customerData, isLoading: isCustomersLoading } = useCustomers({ status: 'ACTIVE' });
+  // 1. Fetch Real Products, Price Lists, and On-Demand Customer from Backend
   const { data: productData, isLoading: isProductsLoading } = useProducts({ isActive: true });
   const { data: priceLists, isLoading: isPriceListsLoading } = usePriceLists();
 
-  const customers = customerData?.items || [];
   const products = productData?.items || [];
   const defaultPriceList = priceLists?.find((pl) => pl.isDefault) || priceLists?.[0];
 
-  // 2. Selection State
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  // 2. Selection State (On-demand searchable customer selection)
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(preselectedCustomerId || '');
   const [notes, setNotes] = useState<string>('');
   const [issueDate, setIssueDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
   const [expiryDate, setExpiryDate] = useState<string>(
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
-
-  // Initialize selected customer once customers load
-  useEffect(() => {
-    if (customers.length > 0 && !selectedCustomerId) {
-      if (preselectedCustomerId && customers.some((c) => c.id === preselectedCustomerId)) {
-        setSelectedCustomerId(preselectedCustomerId);
-      } else {
-        setSelectedCustomerId(customers[0].id);
-      }
-    }
-  }, [customers, preselectedCustomerId, selectedCustomerId]);
-
-  const selectedCustomer = useMemo(
-    () => customers.find((c) => c.id === selectedCustomerId),
-    [customers, selectedCustomerId]
   );
 
   // 3. Line Items State
@@ -222,6 +202,8 @@ export const QuoteBuilderPage: React.FC = () => {
     if (!selectedCustomerId) {
       setSubmissionError('Please select a customer.');
       return;
+    }
+
     if (!defaultPriceList?.id) {
       setSubmissionError('No active commercial price list found in system.');
       return;
@@ -265,14 +247,14 @@ export const QuoteBuilderPage: React.FC = () => {
     }
   };
 
-  const isLoading = isCustomersLoading || isProductsLoading || isPriceListsLoading;
+  const isLoading = isProductsLoading || isPriceListsLoading;
 
   if (isLoading) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center p-12 text-center">
         <RefreshCw className="h-9 w-9 animate-spin text-[#3568ed] mb-3" />
         <h3 className="text-base font-bold text-[#17213a]">Loading CPQ Engine &amp; Catalogs...</h3>
-        <p className="text-xs text-[#71809f] mt-1">Retrieving real customer accounts, price books, and products.</p>
+        <p className="text-xs text-[#71809f] mt-1">Retrieving commercial price books and product catalogs.</p>
       </div>
     );
   }
@@ -340,49 +322,16 @@ export const QuoteBuilderPage: React.FC = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {customers.length === 0 ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
-                  No active customer accounts found. Please verify backend customer seeding.
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#475467] mb-1.5">
-                      Select Customer
-                    </label>
-                    <select
-                      value={selectedCustomerId}
-                      onChange={(e) => setSelectedCustomerId(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 bg-white p-2.5 text-xs text-[#17213a] focus:border-[#3568ed] focus:outline-none"
-                    >
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.companyName} {c.customerTier ? `(${c.customerTier.name})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {selectedCustomer && (
-                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 text-xs space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-[#17213a]">{selectedCustomer.companyName}</span>
-                        {selectedCustomer.customerTier && (
-                          <Badge variant="gold" size="sm">
-                            {selectedCustomer.customerTier.name}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-gray-500 text-[11px] truncate">
-                        Contact: {selectedCustomer.contactName || selectedCustomer.email}
-                      </p>
-                      <p className="text-gray-400 text-[10px]">
-                        ID: {selectedCustomer.id}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-semibold text-[#475467] mb-1.5">
+                  Select Customer Account
+                </label>
+                <CustomerSearchCombobox
+                  selectedCustomerId={selectedCustomerId}
+                  onSelectCustomer={(c) => setSelectedCustomerId(c?.id || '')}
+                  disabled={isSubmitting}
+                />
+              </div>
 
               {/* Dates & Notes */}
               <div className="grid gap-4 sm:grid-cols-2 border-t border-gray-100 pt-4">

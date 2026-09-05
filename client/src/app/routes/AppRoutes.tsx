@@ -9,10 +9,10 @@ import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 // Dashboards
 import { SalesRepDashboard } from '@/features/dashboard/components/SalesRepDashboard';
 import {
-  SalesManagerDashboard,
   FinanceDashboard,
   AdminDashboard,
 } from '@/features/dashboard/components/OtherRoleDashboards';
+import { SalesManagerDashboard } from '@/features/dashboard/components/SalesManagerDashboard';
 
 // Customer Portal Pages
 import {

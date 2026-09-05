@@ -206,6 +206,7 @@ export interface QuotationSubmissionResult {
 export interface QuotationQueryParams {
   page?: number;
   limit?: number;
+  pageSize?: number;
   search?: string;
   status?: BackendQuotationStatus | string;
   customerId?: string;

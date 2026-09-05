@@ -1,7 +1,16 @@
 import { db } from '../../../database/db.js';
 import {
+  customers,
+  customerTiers,
+  quotations,
+  quotationItems,
+  quotationApprovals,
+} from '../../../database/schema/index.js';
+import { eq, desc, and, or, ilike } from 'drizzle-orm';
+import {
   CustomerDashboardMetrics,
   CustomerQuotationDetail,
+  CustomerQuotationItem,
   CustomerOrder,
   CustomerInvoice,
   CustomerPayment,
@@ -9,477 +18,445 @@ import {
   CustomerNotification,
   CustomerProfile,
   NegotiationHistoryEntry,
+  ApprovalStep,
 } from '../types/customerPortal.types.js';
 
-// In-memory persistent state store for customer portal operations to support seamless demo & DB integration
-interface CustomerPortalStore {
-  quotations: CustomerQuotationDetail[];
+interface InMemoryCustomerData {
+  profileExtra?: {
+    taxId?: string;
+    billingAddress?: string;
+    shippingAddress?: string;
+  };
   orders: CustomerOrder[];
   invoices: CustomerInvoice[];
   payments: CustomerPayment[];
   subscriptions: CustomerSubscription[];
   notifications: CustomerNotification[];
-  profile: CustomerProfile;
+  negotiationHistory: Record<string, NegotiationHistoryEntry[]>;
 }
 
-const DEFAULT_STORE: CustomerPortalStore = {
-  profile: {
-    id: 'cust_abc_industries',
-    companyName: 'ABC Industries Pvt. Ltd.',
-    contactName: 'Vikram Mehta',
-    email: 'vikram.mehta@abcindustries.com',
-    phone: '+91 98765 43210',
-    billingAddress: 'Tower 4, Level 8, Cyber City, Gurugram, Haryana - 122002',
-    shippingAddress: 'Plot 45, Sector 18, Industrial Area, Gurugram, Haryana - 122015',
-    tierName: 'Enterprise Gold',
-    taxId: 'GSTIN07AAAAA0000A1Z5',
-  },
-  quotations: [
-    {
-      id: 'quote_1024',
-      quotationNumber: 'Q-1024',
-      customerId: 'cust_abc_industries',
-      customerName: 'ABC Industries Pvt. Ltd.',
-      status: 'APPROVED',
-      currency: 'INR',
-      subtotal: '941176.47',
-      discountAmount: '141176.47',
-      discountPercent: 15,
-      taxAmount: '144000.00',
-      shippingAmount: '0.00',
-      totalAmount: '800000.00',
-      issueDate: '2026-09-01',
-      expiryDate: '2026-09-30',
-      notes: 'Custom enterprise deployment including 24/7 dedicated support SLA and hardware acceleration modules.',
-      items: [
-        {
-          id: 'item_1',
-          productId: 'prod_server_pro',
-          productName: 'DealFlow Enterprise Cloud Server Node (Pro)',
-          sku: 'DF-SRV-PRO-01',
-          quantity: 4,
-          unitPrice: '150000.00',
-          discountPercent: '15.00',
-          grossAmount: '600000.00',
-          discountAmount: '90000.00',
-          netAmount: '510000.00',
-        },
-        {
-          id: 'item_2',
-          productId: 'prod_license_tier3',
-          productName: 'High-Volume Deal Governance License (Tier 3)',
-          sku: 'DF-LIC-T3-ANNUAL',
-          quantity: 20,
-          unitPrice: '17058.82',
-          discountPercent: '15.00',
-          grossAmount: '341176.40',
-          discountAmount: '51176.40',
-          netAmount: '290000.00',
-        },
-      ],
-      negotiationHistory: [
-        {
-          id: 'neg_1',
-          quotationId: 'quote_1024',
-          requestedBy: 'Vikram Mehta (Customer)',
-          requestedRole: 'CUSTOMER',
-          requestedDiscountPercent: 15,
-          reason: 'We are expanding from 2 sites to 4 regional data centers and increasing overall license count.',
-          changeRequests: ['Higher Volume Pricing', 'Faster SLA Guarantee'],
-          status: 'APPROVED',
-          approvals: [
-            {
-              level: 'SALES_MANAGER',
-              status: 'APPROVED',
-              approverName: 'Rajesh Kumar (Sales Director)',
-              decidedAt: '2026-09-02T10:30:00Z',
-              comments: 'Volume commitment verified. Approved 15% discount for Tier 3 node bundle.',
-            },
-            {
-              level: 'FINANCE',
-              status: 'APPROVED',
-              approverName: 'Anita Desai (Finance Ops Lead)',
-              decidedAt: '2026-09-02T14:15:00Z',
-              comments: 'Gross deal margin remains healthy at 42%. Approved.',
-            },
-          ],
-          createdAt: '2026-09-01T15:00:00Z',
-        },
-      ],
-      approvalStatus: {
-        overallStatus: 'APPROVED',
-        steps: [
-          {
-            level: 'SALES_MANAGER',
-            status: 'APPROVED',
-            approverName: 'Rajesh Kumar (Sales Director)',
-            decidedAt: '2026-09-02T10:30:00Z',
-            comments: 'Approved 15% discount structure.',
-          },
-          {
-            level: 'FINANCE',
-            status: 'APPROVED',
-            approverName: 'Anita Desai (Finance Ops Lead)',
-            decidedAt: '2026-09-02T14:15:00Z',
-            comments: 'Verified against financial margin guardrails.',
-          },
-        ],
-      },
-    },
-    {
-      id: 'quote_1023',
-      quotationNumber: 'Q-1023',
-      customerId: 'cust_abc_industries',
-      customerName: 'ABC Industries Pvt. Ltd.',
-      status: 'APPROVED',
-      currency: 'INR',
-      subtotal: '500000.00',
-      discountAmount: '50000.00',
-      discountPercent: 10,
-      taxAmount: '81000.00',
-      shippingAmount: '0.00',
-      totalAmount: '450000.00',
-      issueDate: '2026-08-25',
-      expiryDate: '2026-09-25',
-      notes: 'Initial CPQ integration package with 10 standard user seats.',
-      items: [
-        {
-          id: 'item_3',
-          productId: 'prod_cpq_std',
-          productName: 'DealFlow360 Standard Seat Pack (10 Users)',
-          sku: 'DF-SEAT-10-STD',
-          quantity: 1,
-          unitPrice: '500000.00',
-          discountPercent: '10.00',
-          grossAmount: '500000.00',
-          discountAmount: '50000.00',
-          netAmount: '450000.00',
-        },
-      ],
-      negotiationHistory: [],
-      approvalStatus: {
-        overallStatus: 'APPROVED',
-        steps: [
-          {
-            level: 'SALES_MANAGER',
-            status: 'APPROVED',
-            approverName: 'Rajesh Kumar',
-            decidedAt: '2026-08-26T09:00:00Z',
-            comments: 'Standard tier discount applied.',
-          },
-        ],
-      },
-    },
-    {
-      id: 'quote_1022',
-      quotationNumber: 'Q-1022',
-      customerId: 'cust_abc_industries',
-      customerName: 'ABC Industries Pvt. Ltd.',
-      status: 'EXPIRED',
-      currency: 'INR',
-      subtotal: '355555.55',
-      discountAmount: '35555.55',
-      discountPercent: 10,
-      taxAmount: '57600.00',
-      shippingAmount: '0.00',
-      totalAmount: '320000.00',
-      issueDate: '2026-07-01',
-      expiryDate: '2026-07-31',
-      notes: 'Previous quarter hardware migration proposal.',
-      items: [
-        {
-          id: 'item_4',
-          productId: 'prod_mig_hw',
-          productName: 'Legacy System Data Migration Utility',
-          sku: 'DF-MIG-UTIL',
-          quantity: 1,
-          unitPrice: '355555.55',
-          discountPercent: '10.00',
-          grossAmount: '355555.55',
-          discountAmount: '35555.55',
-          netAmount: '320000.00',
-        },
-      ],
-      negotiationHistory: [],
-      approvalStatus: {
-        overallStatus: 'NOT_REQUIRED',
-        steps: [],
-      },
-    },
-  ],
-  orders: [
-    {
-      id: 'ord_1002',
-      orderNumber: 'ORD-1002',
-      quotationId: 'quote_1023',
-      quotationNumber: 'Q-1023',
-      customerId: 'cust_abc_industries',
-      customerName: 'ABC Industries Pvt. Ltd.',
-      totalAmount: '450000.00',
-      currency: 'INR',
-      fulfillmentStatus: 'SHIPPED',
-      paymentStatus: 'PAID',
-      orderDate: '2026-08-28',
-      estimatedDeliveryDate: '2026-09-08',
-      carrier: 'Blue Dart Express Logistics',
-      trackingNumber: 'BD-IN-88992147',
-      warehouseName: 'North Zone Central Hub, Noida',
-      items: [
-        {
-          id: 'item_3',
-          productId: 'prod_cpq_std',
-          productName: 'DealFlow360 Standard Seat Pack (10 Users)',
-          sku: 'DF-SEAT-10-STD',
-          quantity: 1,
-          unitPrice: '500000.00',
-          discountPercent: '10.00',
-          grossAmount: '500000.00',
-          discountAmount: '50000.00',
-          netAmount: '450000.00',
-        },
-      ],
-      timeline: [
-        {
-          stage: 'CONFIRMED',
-          timestamp: '2026-08-28T11:00:00Z',
-          completed: true,
-          description: 'Quotation Q-1023 confirmed by customer and converted to order.',
-        },
-        {
-          stage: 'PROCESSING',
-          timestamp: '2026-08-29T09:30:00Z',
-          completed: true,
-          description: 'Order processed and inventory allocated at Noida distribution center.',
-        },
-        {
-          stage: 'PACKED',
-          timestamp: '2026-08-30T16:45:00Z',
-          completed: true,
-          description: 'Items packaged and security verification completed.',
-        },
-        {
-          stage: 'SHIPPED',
-          timestamp: '2026-08-31T08:15:00Z',
-          completed: true,
-          description: 'Dispatched via Blue Dart Express (Tracking: BD-IN-88992147).',
-        },
-        {
-          stage: 'DELIVERED',
-          timestamp: '',
-          completed: false,
-          description: 'Out for final delivery to customer premises.',
-        },
-      ],
-    },
-  ],
-  invoices: [
-    {
-      id: 'inv_1002',
-      invoiceNumber: 'INV-1002',
-      orderId: 'ord_1002',
-      orderNumber: 'ORD-1002',
-      quotationNumber: 'Q-1023',
-      customerId: 'cust_abc_industries',
-      customerName: 'ABC Industries Pvt. Ltd.',
-      issueDate: '2026-08-28',
-      dueDate: '2026-09-28',
-      subtotal: '500000.00',
-      discountAmount: '50000.00',
-      taxAmount: '81000.00',
-      totalAmount: '450000.00',
-      amountPaid: '450000.00',
-      balanceDue: '0.00',
-      currency: 'INR',
-      status: 'PAID',
-      items: [
-        {
-          id: 'item_3',
-          productId: 'prod_cpq_std',
-          productName: 'DealFlow360 Standard Seat Pack (10 Users)',
-          sku: 'DF-SEAT-10-STD',
-          quantity: 1,
-          unitPrice: '500000.00',
-          discountPercent: '10.00',
-          grossAmount: '500000.00',
-          discountAmount: '50000.00',
-          netAmount: '450000.00',
-        },
-      ],
-    },
-  ],
-  payments: [
-    {
-      id: 'pay_1001',
-      paymentNumber: 'PAY-1001',
-      invoiceId: 'inv_1002',
-      invoiceNumber: 'INV-1002',
-      orderNumber: 'ORD-1002',
-      amount: '450000.00',
-      currency: 'INR',
-      paymentMethod: 'NET_BANKING',
-      transactionReference: 'HDFC-TXN-998822114',
-      status: 'SUCCESS',
-      paidAt: '2026-08-29T14:20:00Z',
-    },
-  ],
-  subscriptions: [
-    {
-      id: 'sub_101',
-      planName: 'Enterprise SLA & Infrastructure Support',
-      subscriptionNumber: 'SUB-2026-089',
-      status: 'ACTIVE',
-      recurringAmount: '25000.00',
-      currency: 'INR',
-      billingFrequency: 'MONTHLY',
-      startDate: '2026-01-01',
-      renewalDate: '2026-10-01',
-      features: [
-        '24/7 Dedicated Technical Account Manager',
-        '15-Minute Critical Severity Response SLA',
-        'Continuous Cloud Compliance & Deal Guardrails',
-        'Automated Monthly Optimization Reports',
-      ],
-      oneTimeCharges: '0.00',
-    },
-  ],
-  notifications: [
-    {
-      id: 'notif_1',
-      title: 'Quotation Q-1024 Approved',
-      message: 'Your counteroffer for 15% discount has been approved by Sales and Finance.',
-      type: 'NEGOTIATION',
-      isRead: false,
-      createdAt: '2026-09-02T14:20:00Z',
-      linkUrl: '/customer/quotations/quote_1024',
-    },
-    {
-      id: 'notif_2',
-      title: 'Shipment Dispatched: ORD-1002',
-      message: 'Order ORD-1002 has shipped via Blue Dart with tracking BD-IN-88992147.',
-      type: 'ORDER',
-      isRead: false,
-      createdAt: '2026-08-31T08:30:00Z',
-      linkUrl: '/customer/orders/ord_1002',
-    },
-    {
-      id: 'notif_3',
-      title: 'Payment Received: INV-1002',
-      message: 'Payment of ₹4,50,000.00 for invoice INV-1002 was successfully processed.',
-      type: 'PAYMENT',
-      isRead: true,
-      createdAt: '2026-08-29T14:25:00Z',
-      linkUrl: '/customer/payments',
-    },
-  ],
-};
+import { usersRepository } from '../../users/repositories/users.repository.js';
 
-let store: CustomerPortalStore = JSON.parse(JSON.stringify(DEFAULT_STORE));
+interface ResolvedCustomer {
+  id: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  tierName: string;
+  customerTierId: string;
+}
+
+interface CachedCustomer {
+  customer: ResolvedCustomer | null;
+  expiresAt: number;
+}
 
 export class CustomerPortalRepository {
-  async getDashboardMetrics(customerId?: string): Promise<CustomerDashboardMetrics> {
-    const custQuotes = customerId
-      ? store.quotations.filter((q) => !q.customerId || q.customerId === customerId || customerId === store.profile.id)
-      : store.quotations;
-    const custOrders = customerId
-      ? store.orders.filter((o) => !o.customerId || o.customerId === customerId || customerId === store.profile.id)
-      : store.orders;
-    const custInvoices = customerId
-      ? store.invoices.filter((i) => !i.customerId || i.customerId === customerId || customerId === store.profile.id)
-      : store.invoices;
+  // Keyed by customer identifier (email or customerId) to store session-specific orders, invoices, payments, and notifications
+  private customerStores = new Map<string, InMemoryCustomerData>();
+  private customerCache = new Map<string, CachedCustomer>();
+  private inFlightResolutions = new Map<string, Promise<ResolvedCustomer | null>>();
+  private readonly CUSTOMER_CACHE_TTL_MS = 60 * 1000; // 60 seconds
 
-    const activeQuotations = custQuotes.filter(
-      (q) => q.status === 'APPROVED' || q.status === 'DRAFT' || q.status === 'NEGOTIATION'
-    ).length;
+  invalidateCustomerCache(key?: string): void {
+    if (key) {
+      this.customerCache.delete(key.trim().toLowerCase());
+    } else {
+      this.customerCache.clear();
+    }
+  }
 
-    const pendingNegotiations = store.quotations.filter(
-      (q) => q.status === 'NEGOTIATION' || q.status === 'PENDING_APPROVAL'
-    ).length;
+  private getStore(key: string): InMemoryCustomerData {
+    const normalizedKey = key.trim().toLowerCase();
+    if (!this.customerStores.has(normalizedKey)) {
+      this.customerStores.set(normalizedKey, {
+        orders: [],
+        invoices: [],
+        payments: [],
+        subscriptions: [],
+        notifications: [],
+        negotiationHistory: {},
+      });
+    }
+    return this.customerStores.get(normalizedKey)!;
+  }
 
-    const confirmedOrders = store.orders.length;
+  /**
+   * Resolves the customer entity from the database by customerId or email with fast caching & deduplication
+   */
+  async resolveCustomer(
+    customerId?: string,
+    userEmail?: string
+  ): Promise<ResolvedCustomer | null> {
+    const cacheKey = (customerId || userEmail || '').trim().toLowerCase();
+    if (!cacheKey) return null;
 
-    const outstandingInvoices = store.invoices.filter(
-      (inv) => inv.status === 'ISSUED' || inv.status === 'PARTIALLY_PAID' || inv.status === 'OVERDUE'
-    ).length;
+    const cached = this.customerCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.customer;
+    }
 
-    const recentQuotations = store.quotations.slice(0, 5).map((q) => ({
-      id: q.id,
-      quotationNumber: q.quotationNumber,
-      totalAmount: q.totalAmount,
-      status: q.status,
-      currency: q.currency,
-      expiryDate: q.expiryDate,
-      issueDate: q.issueDate,
-    }));
+    if (this.inFlightResolutions.has(cacheKey)) {
+      return this.inFlightResolutions.get(cacheKey)!;
+    }
 
-    const recentOrders = store.orders.slice(0, 5).map((o) => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      quotationNumber: o.quotationNumber,
-      totalAmount: o.totalAmount,
-      fulfillmentStatus: o.fulfillmentStatus,
-      paymentStatus: o.paymentStatus,
-      orderDate: o.orderDate,
-    }));
+    const resolvePromise = (async () => {
+      try {
+        if (customerId) {
+          const found = await db.query.customers.findFirst({
+            where: eq(customers.id, customerId),
+            with: { customerTier: true },
+          });
+          if (found) {
+            const res: ResolvedCustomer = {
+              id: found.id,
+              companyName: found.companyName,
+              contactName: found.contactName || '',
+              email: found.email,
+              phone: found.phone || '',
+              tierName: (found as any).customerTier?.name || 'Standard Tier',
+              customerTierId: found.customerTierId,
+            };
+            this.customerCache.set(cacheKey, { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
+            if (found.email) {
+              this.customerCache.set(found.email.toLowerCase(), { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
+            }
+            return res;
+          }
+        }
 
-    const recentActivity = [
-      ...store.notifications.map((n) => ({
-        id: n.id,
-        title: n.title,
-        description: n.message,
-        timestamp: n.createdAt,
-        type: n.type.toLowerCase() as any,
-      })),
-    ].slice(0, 6);
+        if (userEmail) {
+          const normalized = userEmail.trim().toLowerCase();
+          const found = await db.query.customers.findFirst({
+            where: eq(customers.email, normalized),
+            with: { customerTier: true },
+          });
+          if (found) {
+            const res: ResolvedCustomer = {
+              id: found.id,
+              companyName: found.companyName,
+              contactName: found.contactName || '',
+              email: found.email,
+              phone: found.phone || '',
+              tierName: (found as any).customerTier?.name || 'Standard Tier',
+              customerTierId: found.customerTierId,
+            };
+            this.customerCache.set(cacheKey, { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
+            this.customerCache.set(found.id.toLowerCase(), { customer: res, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
+            return res;
+          }
+        }
 
+        this.customerCache.set(cacheKey, { customer: null, expiresAt: Date.now() + this.CUSTOMER_CACHE_TTL_MS });
+        return null;
+      } catch {
+        return null;
+      } finally {
+        this.inFlightResolutions.delete(cacheKey);
+      }
+    })();
+
+    this.inFlightResolutions.set(cacheKey, resolvePromise);
+    return resolvePromise;
+  }
+
+  /**
+   * Get Profile from database
+   */
+  async getProfile(
+    customerId?: string,
+    userEmail?: string,
+    userName?: string
+  ): Promise<CustomerProfile> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    const storeKey = customer?.id || userEmail || 'unknown';
+    const store = this.getStore(storeKey);
+
+    if (customer) {
+      return {
+        id: customer.id,
+        companyName: customer.companyName,
+        contactName: customer.contactName || userName || '',
+        email: customer.email,
+        phone: customer.phone,
+        tierName: customer.tierName,
+        taxId: store.profileExtra?.taxId || '',
+        billingAddress: store.profileExtra?.billingAddress || '',
+        shippingAddress: store.profileExtra?.shippingAddress || '',
+      };
+    }
+
+    // Default profile for new customer before saving organization
     return {
-      activeQuotations,
-      pendingNegotiations,
-      confirmedOrders,
-      outstandingInvoices,
-      recentQuotations,
-      recentOrders,
-      recentActivity,
+      id: 'pending_organization',
+      companyName: '',
+      contactName: userName || '',
+      email: userEmail || '',
+      phone: '',
+      tierName: 'Standard Tier',
+      taxId: store.profileExtra?.taxId || '',
+      billingAddress: store.profileExtra?.billingAddress || '',
+      shippingAddress: store.profileExtra?.shippingAddress || '',
     };
   }
 
+  /**
+   * Update Profile in database so Sales Representatives can find and create quotes for this customer
+   */
+  async updateProfile(
+    data: Partial<CustomerProfile>,
+    customerId?: string,
+    userEmail?: string,
+    userName?: string
+  ): Promise<CustomerProfile> {
+    const customer = await this.resolveCustomer(customerId, userEmail || data.email);
+    const effectiveEmail = (data.email || userEmail || customer?.email || '').trim().toLowerCase();
+
+    let savedCustomerId = customer?.id;
+    let tierName = customer?.tierName || 'Standard Tier';
+
+    if (customer) {
+      // Update existing customer row in DB
+      await db
+        .update(customers)
+        .set({
+          companyName: data.companyName ? data.companyName.trim() : customer.companyName,
+          contactName: data.contactName !== undefined ? data.contactName?.trim() || null : customer.contactName,
+          phone: data.phone !== undefined ? data.phone?.trim() || null : customer.phone,
+          updatedAt: new Date(),
+        })
+        .where(eq(customers.id, customer.id));
+      savedCustomerId = customer.id;
+    } else if (effectiveEmail) {
+      // Create new customer entity in DB
+      let defaultTier = await db.query.customerTiers.findFirst({
+        where: eq(customerTiers.isActive, true),
+      });
+
+      if (!defaultTier) {
+        const [insertedTier] = await db
+          .insert(customerTiers)
+          .values({
+            name: 'Standard Tier',
+            description: 'Default commercial tier',
+            isActive: true,
+          })
+          .returning();
+        defaultTier = insertedTier;
+      }
+
+      const [newCust] = await db
+        .insert(customers)
+        .values({
+          companyName: data.companyName?.trim() || 'My Organization',
+          contactName: data.contactName?.trim() || userName || null,
+          email: effectiveEmail,
+          phone: data.phone?.trim() || null,
+          customerTierId: defaultTier.id,
+          status: 'ACTIVE',
+        })
+        .returning();
+
+      savedCustomerId = newCust.id;
+      tierName = defaultTier.name;
+    }
+
+    // Persist additional metadata (taxId, billingAddress, shippingAddress) in session store
+    const storeKey = savedCustomerId || effectiveEmail || 'unknown';
+    const store = this.getStore(storeKey);
+    store.profileExtra = {
+      taxId: data.taxId !== undefined ? data.taxId : store.profileExtra?.taxId,
+      billingAddress: data.billingAddress !== undefined ? data.billingAddress : store.profileExtra?.billingAddress,
+      shippingAddress: data.shippingAddress !== undefined ? data.shippingAddress : store.profileExtra?.shippingAddress,
+    };
+
+    // Invalidate cached customer records so next fetches reflect new state immediately
+    if (savedCustomerId) {
+      this.invalidateCustomerCache(savedCustomerId);
+    }
+    if (effectiveEmail) {
+      this.invalidateCustomerCache(effectiveEmail);
+    }
+    usersRepository.invalidateCache();
+
+    return {
+      id: savedCustomerId || 'cust_temp',
+      companyName: data.companyName || customer?.companyName || '',
+      contactName: data.contactName || customer?.contactName || userName || '',
+      email: effectiveEmail,
+      phone: data.phone || customer?.phone || '',
+      tierName,
+      taxId: store.profileExtra.taxId || '',
+      billingAddress: store.profileExtra.billingAddress || '',
+      shippingAddress: store.profileExtra.shippingAddress || '',
+    };
+  }
+
+  /**
+   * Maps database quotation and related records to CustomerQuotationDetail
+   */
+  private mapDbQuotationToDetail(
+    quote: any,
+    customer: { id: string; companyName: string; contactName: string; email: string },
+    negotiationHistory: NegotiationHistoryEntry[] = []
+  ): CustomerQuotationDetail {
+    const rawItems = Array.isArray(quote.items) ? quote.items : [];
+    const items: CustomerQuotationItem[] = rawItems.map((item: any) => ({
+      id: item.id,
+      productId: item.productId,
+      productName: item.productNameSnapshot || 'Product Item',
+      sku: item.skuSnapshot || 'SKU-GEN',
+      quantity: item.quantity,
+      unitPrice: String(item.unitPrice || '0.00'),
+      discountPercent: String(item.discountPercent || '0.00'),
+      grossAmount: String(item.grossAmount || '0.00'),
+      discountAmount: String(item.discountAmount || '0.00'),
+      netAmount: String(item.netAmount || '0.00'),
+    }));
+
+    const rawApprovals = Array.isArray(quote.approvals) ? quote.approvals : [];
+    const approvalSteps: ApprovalStep[] = rawApprovals.map((app: any) => ({
+      level: app.approvalLevel === 'MANAGER' ? 'SALES_MANAGER' : 'FINANCE',
+      status: app.status as any,
+      approverName: app.decidedByUser?.name || (app.approvalLevel === 'MANAGER' ? 'Sales Manager' : 'Finance Officer'),
+      decidedAt: app.decidedAt ? new Date(app.decidedAt).toISOString() : undefined,
+      comments: app.comments || undefined,
+    }));
+
+    let overallApprovalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NOT_REQUIRED' = 'NOT_REQUIRED';
+    if (approvalSteps.length > 0) {
+      if (approvalSteps.some((s) => s.status === 'REJECTED')) {
+        overallApprovalStatus = 'REJECTED';
+      } else if (approvalSteps.every((s) => s.status === 'APPROVED')) {
+        overallApprovalStatus = 'APPROVED';
+      } else if (approvalSteps.some((s) => s.status === 'PENDING')) {
+        overallApprovalStatus = 'PENDING';
+      }
+    }
+
+    const subtotalNum = parseFloat(quote.subtotal || '0');
+    const discountNum = parseFloat(quote.discountAmount || '0');
+    const totalNum = parseFloat(quote.totalAmount || '0');
+    const discountPercent = subtotalNum > 0 ? Math.round((discountNum / subtotalNum) * 100) : 0;
+    const taxAmount = (totalNum * 0.18).toFixed(2);
+
+    return {
+      id: quote.id,
+      quotationNumber: quote.quotationNumber,
+      customerId: customer.id,
+      customerName: customer.companyName,
+      status: quote.status,
+      currency: quote.currency || 'INR',
+      subtotal: quote.subtotal || '0.00',
+      discountAmount: quote.discountAmount || '0.00',
+      discountPercent,
+      taxAmount,
+      shippingAmount: '0.00',
+      totalAmount: quote.totalAmount || '0.00',
+      issueDate: quote.issueDate || (quote.createdAt ? new Date(quote.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+      expiryDate: quote.expiryDate || (quote.createdAt ? new Date(quote.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+      notes: quote.notes || undefined,
+      items,
+      negotiationHistory,
+      approvalStatus: {
+        overallStatus: overallApprovalStatus,
+        steps: approvalSteps,
+      },
+    };
+  }
+
+  /**
+   * Find quotations for customer from PostgreSQL database
+   */
   async findQuotations(
     query?: { search?: string; status?: string },
-    customerId?: string
+    customerId?: string,
+    userEmail?: string
   ): Promise<CustomerQuotationDetail[]> {
-    let result = [...store.quotations];
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) {
+      return [];
+    }
 
-    if (customerId) {
-      result = result.filter(
-        (q) => !q.customerId || q.customerId === customerId || customerId === store.profile.id
+    try {
+      const conditions = [eq(quotations.customerId, customer.id)];
+
+      if (query?.status && query.status !== 'ALL') {
+        conditions.push(eq(quotations.status, query.status));
+      }
+
+      if (query?.search) {
+        conditions.push(
+          or(
+            ilike(quotations.quotationNumber, `%${query.search}%`),
+            ilike(quotations.notes, `%${query.search}%`)
+          )!
+        );
+      }
+
+      const rows = await db.query.quotations.findMany({
+        where: and(...conditions),
+        with: {
+          items: true,
+          approvals: {
+            with: {
+              decidedByUser: true,
+            },
+          },
+        },
+        orderBy: desc(quotations.createdAt),
+      });
+
+      const store = this.getStore(customer.id);
+
+      return rows.map((r) =>
+        this.mapDbQuotationToDetail(r, customer, store.negotiationHistory[r.id] || [])
       );
+    } catch {
+      return [];
     }
-
-    if (query?.status && query.status !== 'ALL') {
-      result = result.filter((q) => q.status.toUpperCase() === query.status?.toUpperCase());
-    }
-
-    if (query?.search) {
-      const s = query.search.toLowerCase();
-      result = result.filter(
-        (q) =>
-          q.quotationNumber.toLowerCase().includes(s) ||
-          q.notes?.toLowerCase().includes(s) ||
-          q.items.some((i) => i.productName.toLowerCase().includes(s) || i.sku.toLowerCase().includes(s))
-      );
-    }
-
-    return result;
   }
 
-  async findQuotationById(id: string, customerId?: string): Promise<CustomerQuotationDetail | undefined> {
-    const quote = store.quotations.find((q) => q.id === id || q.quotationNumber === id);
-    if (!quote) return undefined;
-    if (customerId && quote.customerId && quote.customerId !== customerId && customerId !== store.profile.id) {
-      return undefined; // Not authorized for this customer
+  /**
+   * Find a specific quotation by ID or Number
+   */
+  async findQuotationById(
+    id: string,
+    customerId?: string,
+    userEmail?: string
+  ): Promise<CustomerQuotationDetail | undefined> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) return undefined;
+
+    try {
+      const row = await db.query.quotations.findFirst({
+        where: and(
+          eq(quotations.customerId, customer.id),
+          or(eq(quotations.id, id), eq(quotations.quotationNumber, id))
+        ),
+        with: {
+          items: true,
+          approvals: {
+            with: {
+              decidedByUser: true,
+            },
+          },
+        },
+      });
+
+      if (!row) return undefined;
+
+      const store = this.getStore(customer.id);
+      return this.mapDbQuotationToDetail(row, customer, store.negotiationHistory[row.id] || []);
+    } catch {
+      return undefined;
     }
-    return quote;
   }
 
+  /**
+   * Submit negotiation counter-offer for a quotation
+   */
   async submitNegotiation(
     quotationId: string,
     data: {
@@ -488,27 +465,19 @@ export class CustomerPortalRepository {
       changeRequests?: string[];
       message?: string;
     },
-    customerId?: string
+    customerId?: string,
+    userEmail?: string,
+    userName?: string
   ): Promise<CustomerQuotationDetail> {
-    const quote = await this.findQuotationById(quotationId, customerId);
+    const quote = await this.findQuotationById(quotationId, customerId, userEmail);
     if (!quote) {
       throw new Error(`Quotation with ID '${quotationId}' not found or access denied`);
     }
 
     const requestedDiscount = data.requestedDiscountPercent;
     let newStatus: 'NEGOTIATION' | 'PENDING_APPROVAL' | 'APPROVED' = 'NEGOTIATION';
-    const approvalSteps: Array<{
-      level: 'SALES_MANAGER' | 'FINANCE';
-      status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NOT_REQUIRED';
-      approverName?: string;
-      decidedAt?: string;
-      comments?: string;
-    }> = [];
+    const approvalSteps: ApprovalStep[] = [];
 
-    // Discount Governance Workflow Engine:
-    // <= 10%: Auto approved by standard tier
-    // 10% - 20%: Requires Sales Manager approval
-    // > 20%: Requires Sales Manager + Finance Lead approval
     if (requestedDiscount <= 10) {
       newStatus = 'APPROVED';
       approvalSteps.push({
@@ -523,7 +492,7 @@ export class CustomerPortalRepository {
       approvalSteps.push({
         level: 'SALES_MANAGER',
         status: 'PENDING',
-        approverName: 'Rajesh Kumar (Sales Director)',
+        approverName: 'Sales Director',
         comments: 'Pending Sales Manager review for discount between 10% and 20%.',
       });
     } else {
@@ -532,13 +501,13 @@ export class CustomerPortalRepository {
         {
           level: 'SALES_MANAGER',
           status: 'PENDING',
-          approverName: 'Rajesh Kumar (Sales Director)',
+          approverName: 'Sales Director',
           comments: 'Tier 1 Approval Required for high discount request (>20%).',
         },
         {
           level: 'FINANCE',
           status: 'PENDING',
-          approverName: 'Anita Desai (Finance Ops Lead)',
+          approverName: 'Finance Lead',
           comments: 'Tier 2 Financial Margin & Profitability Review Required.',
         }
       );
@@ -548,10 +517,21 @@ export class CustomerPortalRepository {
     const newDiscountAmount = ((subtotalNum * requestedDiscount) / 100).toFixed(2);
     const newTotal = (subtotalNum - parseFloat(newDiscountAmount)).toFixed(2);
 
+    // Update quotation in DB
+    await db
+      .update(quotations)
+      .set({
+        status: newStatus,
+        discountAmount: newDiscountAmount,
+        totalAmount: newTotal,
+        updatedAt: new Date(),
+      })
+      .where(eq(quotations.id, quote.id));
+
     const newHistoryEntry: NegotiationHistoryEntry = {
       id: `neg_${Date.now()}`,
       quotationId: quote.id,
-      requestedBy: store.profile.contactName,
+      requestedBy: userName || quote.customerName || 'Customer',
       requestedRole: 'CUSTOMER',
       requestedDiscountPercent: requestedDiscount,
       reason: data.reason || data.message || 'Customer requested commercial discount adjustment.',
@@ -562,17 +542,12 @@ export class CustomerPortalRepository {
       createdAt: new Date().toISOString(),
     };
 
-    quote.status = newStatus;
-    quote.discountPercent = requestedDiscount;
-    quote.discountAmount = newDiscountAmount;
-    quote.totalAmount = newTotal;
-    quote.negotiationHistory.unshift(newHistoryEntry);
-    quote.approvalStatus = {
-      overallStatus: newStatus === 'APPROVED' ? 'APPROVED' : 'PENDING',
-      steps: approvalSteps,
-    };
+    const store = this.getStore(quote.customerId || userEmail || 'unknown');
+    if (!store.negotiationHistory[quote.id]) {
+      store.negotiationHistory[quote.id] = [];
+    }
+    store.negotiationHistory[quote.id].unshift(newHistoryEntry);
 
-    // Add notification
     store.notifications.unshift({
       id: `notif_${Date.now()}`,
       title: `Negotiation Submitted for ${quote.quotationNumber}`,
@@ -583,25 +558,39 @@ export class CustomerPortalRepository {
       linkUrl: `/customer/quotations/${quote.id}`,
     });
 
-    return quote;
+    return (await this.findQuotationById(quotationId, customerId, userEmail))!;
   }
 
+  /**
+   * Confirm quotation and generate order & invoice
+   */
   async confirmQuotation(
     quotationId: string,
-    customerId?: string
+    customerId?: string,
+    userEmail?: string
   ): Promise<{ quotation: CustomerQuotationDetail; order: CustomerOrder }> {
-    const quote = await this.findQuotationById(quotationId, customerId);
+    const quote = await this.findQuotationById(quotationId, customerId, userEmail);
     if (!quote) {
       throw new Error(`Quotation with ID '${quotationId}' not found or access denied`);
     }
 
-    quote.status = 'CONFIRMED';
+    // Update DB status to CONFIRMED
+    await db
+      .update(quotations)
+      .set({
+        status: 'CONFIRMED',
+        updatedAt: new Date(),
+      })
+      .where(eq(quotations.id, quote.id));
 
-    const orderNum = `ORD-${quote.quotationNumber.replace('Q-', '')}`;
+    quote.status = 'CONFIRMED';
+    const orderNum = `ORD-${quote.quotationNumber.replace(/^QT-|^Q-/, '')}`;
     const orderId = `ord_${Date.now()}`;
 
     quote.orderId = orderId;
     quote.orderNumber = orderNum;
+
+    const store = this.getStore(quote.customerId || userEmail || 'unknown');
 
     const newOrder: CustomerOrder = {
       id: orderId,
@@ -616,9 +605,9 @@ export class CustomerPortalRepository {
       paymentStatus: 'UNPAID',
       orderDate: new Date().toISOString().split('T')[0],
       estimatedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      carrier: 'Blue Dart Logistics Express',
-      trackingNumber: `BD-IN-${Math.floor(10000000 + Math.random() * 90000000)}`,
-      warehouseName: 'North Zone Central Hub, Noida',
+      carrier: 'Logistics Dispatch Network',
+      trackingNumber: `TRK-IN-${Math.floor(10000000 + Math.random() * 90000000)}`,
+      warehouseName: 'Central Fulfillment Hub',
       items: quote.items,
       timeline: [
         {
@@ -631,13 +620,13 @@ export class CustomerPortalRepository {
           stage: 'PROCESSING',
           timestamp: new Date().toISOString(),
           completed: true,
-          description: 'Warehouse inventory reservation initiated.',
+          description: 'Warehouse inventory allocation in progress.',
         },
         {
           stage: 'PACKED',
           timestamp: '',
           completed: false,
-          description: 'Pending pick & pack verification.',
+          description: 'Pick & pack verification.',
         },
         {
           stage: 'SHIPPED',
@@ -649,16 +638,15 @@ export class CustomerPortalRepository {
           stage: 'DELIVERED',
           timestamp: '',
           completed: false,
-          description: 'Delivery to destination.',
+          description: 'Delivery to destination address.',
         },
       ],
     };
 
     store.orders.unshift(newOrder);
 
-    // Also automatically create corresponding invoice for the order
     const invoiceId = `inv_${Date.now()}`;
-    const invoiceNum = `INV-${quote.quotationNumber.replace('Q-', '')}`;
+    const invoiceNum = `INV-${quote.quotationNumber.replace(/^QT-|^Q-/, '')}`;
     const newInvoice: CustomerInvoice = {
       id: invoiceId,
       invoiceNumber: invoiceNum,
@@ -682,7 +670,6 @@ export class CustomerPortalRepository {
 
     store.invoices.unshift(newInvoice);
 
-    // Notify customer
     store.notifications.unshift({
       id: `notif_${Date.now()}`,
       title: `Order Created: ${newOrder.orderNumber}`,
@@ -696,48 +683,114 @@ export class CustomerPortalRepository {
     return { quotation: quote, order: newOrder };
   }
 
-  async findOrders(customerId?: string): Promise<CustomerOrder[]> {
-    if (customerId) {
-      return store.orders.filter(
-        (o) => !o.customerId || o.customerId === customerId || customerId === store.profile.id
-      );
+  /**
+   * Real-time dashboard metrics computed purely from customer database quotes & session orders/invoices
+   */
+  async getDashboardMetrics(customerId?: string, userEmail?: string): Promise<CustomerDashboardMetrics> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) {
+      return {
+        activeQuotations: 0,
+        pendingNegotiations: 0,
+        confirmedOrders: 0,
+        outstandingInvoices: 0,
+        recentQuotations: [],
+        recentOrders: [],
+        recentActivity: [],
+      };
     }
+
+    const quotes = await this.findQuotations(undefined, customer.id, userEmail);
+    const store = this.getStore(customer.id);
+
+    const activeQuotations = quotes.filter(
+      (q) => q.status === 'APPROVED' || q.status === 'DRAFT' || q.status === 'NEGOTIATION' || q.status === 'PENDING_APPROVAL'
+    ).length;
+
+    const pendingNegotiations = quotes.filter(
+      (q) => q.status === 'NEGOTIATION' || q.status === 'PENDING_APPROVAL'
+    ).length;
+
+    const confirmedOrders = store.orders.length;
+
+    const outstandingInvoices = store.invoices.filter(
+      (inv) => inv.status === 'ISSUED' || inv.status === 'PARTIALLY_PAID' || inv.status === 'OVERDUE'
+    ).length;
+
+    const recentQuotations = quotes.slice(0, 5).map((q) => ({
+      id: q.id,
+      quotationNumber: q.quotationNumber,
+      totalAmount: q.totalAmount,
+      status: q.status,
+      currency: q.currency,
+      expiryDate: q.expiryDate,
+      issueDate: q.issueDate,
+    }));
+
+    const recentOrders = store.orders.slice(0, 5).map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      quotationNumber: o.quotationNumber,
+      totalAmount: o.totalAmount,
+      fulfillmentStatus: o.fulfillmentStatus,
+      paymentStatus: o.paymentStatus,
+      orderDate: o.orderDate,
+    }));
+
+    const recentActivity = store.notifications.slice(0, 6).map((n) => ({
+      id: n.id,
+      title: n.title,
+      description: n.message,
+      timestamp: n.createdAt,
+      type: n.type.toLowerCase() as any,
+    }));
+
+    return {
+      activeQuotations,
+      pendingNegotiations,
+      confirmedOrders,
+      outstandingInvoices,
+      recentQuotations,
+      recentOrders,
+      recentActivity,
+    };
+  }
+
+  async findOrders(customerId?: string, userEmail?: string): Promise<CustomerOrder[]> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) return [];
+    const store = this.getStore(customer.id);
     return store.orders;
   }
 
-  async findOrderById(id: string, customerId?: string): Promise<CustomerOrder | undefined> {
-    const order = store.orders.find((o) => o.id === id || o.orderNumber === id);
-    if (!order) return undefined;
-    if (customerId && order.customerId && order.customerId !== customerId && customerId !== store.profile.id) {
-      return undefined;
-    }
-    return order;
+  async findOrderById(id: string, customerId?: string, userEmail?: string): Promise<CustomerOrder | undefined> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) return undefined;
+    const store = this.getStore(customer.id);
+    return store.orders.find((o) => o.id === id || o.orderNumber === id);
   }
 
-  async findInvoices(customerId?: string): Promise<CustomerInvoice[]> {
-    if (customerId) {
-      return store.invoices.filter(
-        (inv) => !inv.customerId || inv.customerId === customerId || customerId === store.profile.id
-      );
-    }
+  async findInvoices(customerId?: string, userEmail?: string): Promise<CustomerInvoice[]> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) return [];
+    const store = this.getStore(customer.id);
     return store.invoices;
   }
 
-  async findInvoiceById(id: string, customerId?: string): Promise<CustomerInvoice | undefined> {
-    const invoice = store.invoices.find((inv) => inv.id === id || inv.invoiceNumber === id);
-    if (!invoice) return undefined;
-    if (customerId && invoice.customerId && invoice.customerId !== customerId && customerId !== store.profile.id) {
-      return undefined;
-    }
-    return invoice;
+  async findInvoiceById(id: string, customerId?: string, userEmail?: string): Promise<CustomerInvoice | undefined> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) return undefined;
+    const store = this.getStore(customer.id);
+    return store.invoices.find((inv) => inv.id === id || inv.invoiceNumber === id);
   }
 
   async payInvoice(
     invoiceId: string,
     data: { amount: string; paymentMethod: 'CREDIT_CARD' | 'BANK_TRANSFER' | 'NET_BANKING' | 'UPI' },
-    customerId?: string
+    customerId?: string,
+    userEmail?: string
   ): Promise<{ invoice: CustomerInvoice; payment: CustomerPayment }> {
-    const invoice = await this.findInvoiceById(invoiceId, customerId);
+    const invoice = await this.findInvoiceById(invoiceId, customerId, userEmail);
     if (!invoice) {
       throw new Error(`Invoice with ID '${invoiceId}' not found or access denied`);
     }
@@ -750,7 +803,9 @@ export class CustomerPortalRepository {
     invoice.balanceDue = newBalance;
     invoice.status = parseFloat(newBalance) <= 0 ? 'PAID' : 'PARTIALLY_PAID';
 
-    // Update corresponding order payment status
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    const store = this.getStore(customer?.id || userEmail || 'unknown');
+
     const order = store.orders.find((o) => o.id === invoice.orderId);
     if (order) {
       order.paymentStatus = invoice.status === 'PAID' ? 'PAID' : 'PARTIALLY_PAID';
@@ -785,61 +840,52 @@ export class CustomerPortalRepository {
     return { invoice, payment };
   }
 
-  async findPayments(customerId?: string): Promise<CustomerPayment[]> {
-    if (customerId) {
-      return store.payments.filter((_p) => true);
-    }
+  async findPayments(customerId?: string, userEmail?: string): Promise<CustomerPayment[]> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) return [];
+    const store = this.getStore(customer.id);
     return store.payments;
   }
 
-  async findSubscriptions(customerId?: string): Promise<CustomerSubscription[]> {
-    if (customerId) {
-      return store.subscriptions.filter(
-        (s) => !s.customerId || s.customerId === customerId || customerId === store.profile.id
-      );
-    }
+  async findSubscriptions(customerId?: string, userEmail?: string): Promise<CustomerSubscription[]> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) return [];
+    const store = this.getStore(customer.id);
     return store.subscriptions;
   }
 
-  async findSubscriptionById(id: string, customerId?: string): Promise<CustomerSubscription | undefined> {
-    const sub = store.subscriptions.find((s) => s.id === id);
-    if (!sub) return undefined;
-    if (customerId && sub.customerId && sub.customerId !== customerId && customerId !== store.profile.id) {
-      return undefined;
-    }
-    return sub;
+  async findSubscriptionById(id: string, customerId?: string, userEmail?: string): Promise<CustomerSubscription | undefined> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) return undefined;
+    const store = this.getStore(customer.id);
+    return store.subscriptions.find((s) => s.id === id);
   }
 
-  async findNotifications(_customerId?: string): Promise<CustomerNotification[]> {
+  async findNotifications(customerId?: string, userEmail?: string): Promise<CustomerNotification[]> {
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    const storeKey = customer?.id || userEmail || 'unknown';
+    const store = this.getStore(storeKey);
     return store.notifications;
   }
 
   async markNotificationAsRead(id: string): Promise<boolean> {
-    const notif = store.notifications.find((n) => n.id === id);
-    if (notif) {
-      notif.isRead = true;
-      return true;
+    for (const store of this.customerStores.values()) {
+      const notif = store.notifications.find((n) => n.id === id);
+      if (notif) {
+        notif.isRead = true;
+        return true;
+      }
     }
     return false;
   }
 
   async markAllNotificationsAsRead(): Promise<boolean> {
-    store.notifications.forEach((n) => {
-      n.isRead = true;
-    });
+    for (const store of this.customerStores.values()) {
+      store.notifications.forEach((n) => {
+        n.isRead = true;
+      });
+    }
     return true;
-  }
-
-  async getProfile(_customerId?: string): Promise<CustomerProfile> {
-    return store.profile;
-  }
-
-  async updateProfile(data: Partial<CustomerProfile>, _customerId?: string): Promise<CustomerProfile> {
-    store.profile = {
-      ...store.profile,
-      ...data,
-    };
-    return store.profile;
   }
 }
 

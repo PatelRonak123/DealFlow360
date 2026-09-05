@@ -95,19 +95,34 @@ export const updateQuotationItemSchema = z.object({
     }),
 });
 
-export const quotationQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
-  search: z.string().trim().optional(),
-  status: z.enum([
-    QuotationStatuses.DRAFT,
-    QuotationStatuses.SENT,
-    QuotationStatuses.CANCELLED,
-    QuotationStatuses.EXPIRED,
-  ]).optional(),
-  customerId: z.string().uuid().optional(),
-  createdBy: z.string().uuid().optional(),
-});
+const quotationStatusValues = Object.values(QuotationStatuses) as string[];
+
+export const quotationQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().optional().default(1),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    pageSize: z.coerce.number().int().positive().max(100).optional(),
+    search: z.string().trim().optional(),
+    status: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .transform((val) => {
+        if (!val) return undefined;
+        const items = Array.isArray(val)
+          ? val
+          : val.includes(',')
+          ? val.split(',').map((s) => s.trim())
+          : [val.trim()];
+        const validStatuses = items.filter((s) => quotationStatusValues.includes(s));
+        return validStatuses.length > 0 ? validStatuses : undefined;
+      }),
+    customerId: z.string().uuid().optional(),
+    createdBy: z.string().uuid().optional(),
+  })
+  .transform((data) => ({
+    ...data,
+    limit: data.pageSize || data.limit || 10,
+  }));
 
 export type CreateQuotationInput = z.infer<typeof createQuotationSchema>;
 export type UpdateQuotationInput = z.infer<typeof updateQuotationSchema>;

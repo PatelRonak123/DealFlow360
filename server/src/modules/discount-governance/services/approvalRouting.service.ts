@@ -21,6 +21,7 @@ import {
   QuotationDiscountEvaluationResult,
 } from './discountEvaluation.service.js';
 import { DiscountGovernanceRepository } from '../repositories/discountGovernance.repository.js';
+import { quotationsRepository } from '../../quotations/repositories/quotations.repository.js';
 
 export interface QuotationSubmissionResult {
   quotationId: string;
@@ -211,6 +212,7 @@ export class ApprovalRoutingService {
       };
     });
 
+    quotationsRepository.invalidateCache();
     return result;
   }
 
@@ -275,7 +277,7 @@ export class ApprovalRoutingService {
       );
     }
 
-    return await this.db.transaction(async (trx) => {
+    const result = await this.db.transaction(async (trx) => {
       // 1. Update this approval
       const updatedApproval = await this.repository.updateApproval(
         approvalId,
@@ -318,6 +320,9 @@ export class ApprovalRoutingService {
         remainingApprovalsCount: remainingPending.length,
       };
     });
+
+    quotationsRepository.invalidateCache();
+    return result;
   }
 
   /**
@@ -369,7 +374,7 @@ export class ApprovalRoutingService {
       }
     }
 
-    return await this.db.transaction(async (trx) => {
+    const result = await this.db.transaction(async (trx) => {
       // 1. Update this approval to REJECTED
       const updatedApproval = await this.repository.updateApproval(
         approvalId,
@@ -399,6 +404,9 @@ export class ApprovalRoutingService {
         quotationStatus: QuotationStatuses.REJECTED,
       };
     });
+
+    quotationsRepository.invalidateCache();
+    return result;
   }
 
   /**
@@ -434,6 +442,8 @@ export class ApprovalRoutingService {
           updatedAt: new Date(),
         })
         .where(eq(quotations.id, quotationId));
+      
+      quotationsRepository.invalidateCache();
     }
   }
 }
