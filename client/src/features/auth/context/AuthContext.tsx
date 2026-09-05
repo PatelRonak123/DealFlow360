@@ -256,7 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (data?: unknown): Promise<{ user: AuthContextUser }> => {
     setIsLoading(true);
-    const regData = data as { name?: string; email?: string; password?: string } | undefined;
+    const regData = data as { name?: string; email?: string; password?: string; companyName?: string } | undefined;
 
     if (!regData?.email || !regData?.password) {
       setIsLoading(false);
@@ -271,6 +271,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: rawName,
         email: rawEmail.toLowerCase(),
         password: regData.password,
+        companyName: regData.companyName?.trim() || undefined,
       });
 
       if (!serverResult?.user || !serverResult.accessToken) {
@@ -291,6 +292,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         roles: normalizedRoles,
         permissions: serverResult.user.permissions || [],
         activeRole: primaryRole,
+        customer: serverResult.user.customerId
+          ? {
+              id: serverResult.user.customerId,
+              companyName: serverResult.user.customerName || 'Customer Account',
+            }
+          : undefined,
         title: getRoleTitle(primaryRole),
       };
 
