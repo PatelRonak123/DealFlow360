@@ -3,21 +3,12 @@ import { Outlet } from 'react-router-dom';
 
 export const MainLayout: React.FC = () => {
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header
-        style={{
-          borderBottom: '1px solid var(--border-color)',
-          padding: '1rem 2rem',
-          backgroundColor: 'var(--bg-secondary)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>DealFlow360</h2>
-        <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Enterprise Platform Architecture</span>
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+      <header className="border-b border-slate-800 px-8 py-4 bg-slate-900 flex justify-between items-center">
+        <h2 className="text-xl font-semibold text-white tracking-tight">DealFlow360</h2>
+        <span className="text-sm text-slate-400 font-medium">Enterprise Platform Architecture</span>
       </header>
-      <main style={{ flex: 1, padding: '2rem' }}>
+      <main className="flex-1 p-8">
         <Outlet />
       </main>
     </div>
