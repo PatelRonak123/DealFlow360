@@ -25,6 +25,7 @@ export function useQuotationsList(params?: QuotationQueryParams) {
     queryKey: quotationKeys.list(params),
     queryFn: () => quotationsApi.getQuotations(params),
     staleTime: 1000 * 30, // 30 seconds fresh
+    placeholderData: (previousData) => previousData,
   });
 }
 

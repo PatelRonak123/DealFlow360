@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Pagination } from '@/components/ui/Pagination';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useQuotationsList } from '@/features/quotations/hooks/useQuotationsQuery';
 import { BackendQuotationStatus } from '@/features/quotations/types/quotationApi.types';
 import { formatINR, formatCompactINR, formatDate } from '@/utils/formatters';
@@ -70,11 +72,40 @@ export const PipelinePage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
   const [filterStage, setFilterStage] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  const [tablePage, setTablePage] = useState<number>(1);
+  const [tablePageSize, setTablePageSize] = useState<number>(10);
+
+  // Determine query parameters based on active view mode
+  const queryParams = useMemo(() => {
+    const search = debouncedSearch.trim() || undefined;
+    if (viewMode === 'kanban') {
+      return {
+        page: 1,
+        limit: 100,
+        search,
+      };
+    }
+
+    let statusParam: string | undefined = undefined;
+    if (filterStage === 'draft') statusParam = 'DRAFT';
+    else if (filterStage === 'approval') statusParam = 'PENDING_MANAGER_APPROVAL,PENDING_FINANCE_APPROVAL';
+    else if (filterStage === 'approved') statusParam = 'APPROVED';
+    else if (filterStage === 'sent') statusParam = 'SENT';
+    else if (filterStage === 'closed') statusParam = 'REJECTED,CANCELLED,EXPIRED';
+    else if (filterStage === 'attention') statusParam = 'PENDING_MANAGER_APPROVAL,PENDING_FINANCE_APPROVAL';
+
+    return {
+      page: tablePage,
+      limit: tablePageSize,
+      search,
+      status: statusParam,
+    };
+  }, [viewMode, tablePage, tablePageSize, debouncedSearch, filterStage]);
 
   // Fetch real quotations from backend
-  const { data, isLoading, isError, error, refetch } = useQuotationsList({
-    search: searchQuery.trim() || undefined,
-  });
+  const { data, isLoading, isError, error, refetch } = useQuotationsList(queryParams);
 
   const quotations = useMemo(() => data?.items || [], [data?.items]);
 
@@ -98,8 +129,8 @@ export const PipelinePage: React.FC = () => {
     }
   };
 
-  // Filtered quotations based on selected tab filter
-  const filteredQuotations = useMemo(() => {
+  // Filtered quotations for Kanban view (in-memory partition across the 4 stage columns)
+  const kanbanFilteredQuotations = useMemo(() => {
     return quotations.filter((quote) => {
       const stage = getStageForQuotation(quote.status);
       if (filterStage === 'all') {
@@ -120,9 +151,11 @@ export const PipelinePage: React.FC = () => {
     });
   }, [quotations, filterStage]);
 
+  const displayedQuotations = viewMode === 'kanban' ? kanbanFilteredQuotations : quotations;
+
   const totalValue = useMemo(
-    () => filteredQuotations.reduce((sum, q) => sum + (parseFloat(String(q.totalAmount)) || 0), 0),
-    [filteredQuotations]
+    () => displayedQuotations.reduce((sum, q) => sum + (parseFloat(String(q.totalAmount)) || 0), 0),
+    [displayedQuotations]
   );
 
   const getTierBadgeVariant = (tierName?: string): 'gold' | 'silver' | 'bronze' | 'default' => {
@@ -241,7 +274,10 @@ export const PipelinePage: React.FC = () => {
               type="text"
               placeholder="Search quote or customer..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setTablePage(1);
+              }}
               className="w-full bg-transparent text-xs text-[#17213a] placeholder:text-gray-400 focus:outline-none"
             />
           </div>
@@ -261,7 +297,10 @@ export const PipelinePage: React.FC = () => {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setFilterStage(tab.id)}
+              onClick={() => {
+                setFilterStage(tab.id);
+                setTablePage(1);
+              }}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
                 filterStage === tab.id
                   ? 'bg-[#3568ed] text-white font-semibold shadow-xs'
@@ -285,7 +324,9 @@ export const PipelinePage: React.FC = () => {
           </button>
           <div className="flex items-center gap-1.5 text-[#59657d]">
             <span>Active Deals:</span>
-            <strong className="text-[#17213a]">{filteredQuotations.length}</strong>
+            <strong className="text-[#17213a]">
+              {viewMode === 'kanban' ? kanbanFilteredQuotations.length : (data?.total ?? quotations.length)}
+            </strong>
           </div>
           <div className="flex items-center gap-1.5 text-[#59657d]">
             <span>Total Value:</span>
@@ -336,7 +377,7 @@ export const PipelinePage: React.FC = () => {
       {!isLoading && !isError && viewMode === 'kanban' && (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {PIPELINE_STAGES.map((col) => {
-            const colQuotes = filteredQuotations.filter((q) =>
+            const colQuotes = kanbanFilteredQuotations.filter((q) =>
               col.backendStatuses.includes(q.status)
             );
             const colTotal = colQuotes.reduce(
@@ -482,83 +523,103 @@ export const PipelinePage: React.FC = () => {
       {/* Table View */}
       {!isLoading && !isError && viewMode === 'table' && (
         <div className="rounded-2xl border border-[#e7ebf7] bg-white p-5 shadow-sm">
-          {filteredQuotations.length === 0 ? (
+          {quotations.length === 0 ? (
             <div className="py-12 text-center text-xs text-gray-400">
               No quotations found matching your current filter.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[#eef2f9] text-[11px] font-bold uppercase tracking-wider text-[#8491aa]">
-                    <th className="pb-3 font-semibold">Quotation #</th>
-                    <th className="pb-3 font-semibold">Customer &amp; Tier</th>
-                    <th className="pb-3 font-semibold">Stage / Status</th>
-                    <th className="pb-3 font-semibold">Deal Value</th>
-                    <th className="pb-3 font-semibold">Discount</th>
-                    <th className="pb-3 font-semibold">Expiry Date</th>
-                    <th className="pb-3 font-semibold text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#f2f5fb]">
-                  {filteredQuotations.map((quote) => {
-                    const customerName = quote.customer?.companyName || 'Enterprise Account';
-                    const tierName = quote.customer?.customerTier?.name;
-                    const tierBadge = getTierBadgeVariant(tierName);
-                    const amount = parseFloat(String(quote.totalAmount)) || 0;
-                    const discount = parseFloat(String(quote.discountAmount)) || 0;
-                    const statusVariant = getStatusBadgeVariant(quote.status);
-                    const statusLabel = getStatusLabel(quote.status);
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#eef2f9] text-[11px] font-bold uppercase tracking-wider text-[#8491aa]">
+                      <th className="pb-3 font-semibold">Quotation #</th>
+                      <th className="pb-3 font-semibold">Customer &amp; Tier</th>
+                      <th className="pb-3 font-semibold">Stage / Status</th>
+                      <th className="pb-3 font-semibold">Deal Value</th>
+                      <th className="pb-3 font-semibold">Discount</th>
+                      <th className="pb-3 font-semibold">Expiry Date</th>
+                      <th className="pb-3 font-semibold text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#f2f5fb]">
+                    {quotations.map((quote) => {
+                      const customerName = quote.customer?.companyName || 'Enterprise Account';
+                      const tierName = quote.customer?.customerTier?.name;
+                      const tierBadge = getTierBadgeVariant(tierName);
+                      const amount = parseFloat(String(quote.totalAmount)) || 0;
+                      const discount = parseFloat(String(quote.discountAmount)) || 0;
+                      const statusVariant = getStatusBadgeVariant(quote.status);
+                      const statusLabel = getStatusLabel(quote.status);
 
-                    return (
-                      <tr key={quote.id} className="hover:bg-[#f8faff] transition">
-                        <td className="py-3.5">
-                          <p className="font-bold text-[#3568ed]">{quote.quotationNumber}</p>
-                          <span className="text-[10px] text-gray-400 truncate block max-w-[200px]">
-                            {quote.notes || 'Commercial Proposal'}
-                          </span>
-                        </td>
-                        <td className="py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-900">{customerName}</span>
-                            {tierName && (
-                              <Badge variant={tierBadge} size="sm">
-                                {tierName}
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3.5">
-                          <Badge variant={statusVariant} size="sm">
-                            {statusLabel}
-                          </Badge>
-                        </td>
-                        <td className="py-3.5 font-bold text-[#17213a]">
-                          {formatINR(amount)}
-                        </td>
-                        <td className="py-3.5">
-                          <span className={`font-semibold ${discount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                            {discount > 0 ? formatINR(discount) : '₹0'}
-                          </span>
-                        </td>
-                        <td className="py-3.5 text-gray-500">
-                          {quote.expiryDate ? formatDate(quote.expiryDate) : '—'}
-                        </td>
-                        <td className="py-3.5 text-right">
-                          <Button
-                            variant={quote.status === 'DRAFT' ? 'primary' : 'secondary'}
-                            size="sm"
-                            onClick={() => navigate(`/quotations/${quote.id}`)}
-                          >
-                            {quote.status === 'DRAFT' ? 'Edit' : 'View'}
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      return (
+                        <tr key={quote.id} className="hover:bg-[#f8faff] transition">
+                          <td className="py-3.5">
+                            <p className="font-bold text-[#3568ed]">{quote.quotationNumber}</p>
+                            <span className="text-[10px] text-gray-400 truncate block max-w-[200px]">
+                              {quote.notes || 'Commercial Proposal'}
+                            </span>
+                          </td>
+                          <td className="py-3.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{customerName}</span>
+                              {tierName && (
+                                <Badge variant={tierBadge} size="sm">
+                                  {tierName}
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5">
+                            <Badge variant={statusVariant} size="sm">
+                              {statusLabel}
+                            </Badge>
+                          </td>
+                          <td className="py-3.5 font-bold text-[#17213a]">
+                            {formatINR(amount)}
+                          </td>
+                          <td className="py-3.5">
+                            <span className={`font-semibold ${discount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                              {discount > 0 ? formatINR(discount) : '₹0'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 text-gray-500">
+                            {quote.expiryDate ? formatDate(quote.expiryDate) : '—'}
+                          </td>
+                          <td className="py-3.5 text-right">
+                            <Button
+                              variant={quote.status === 'DRAFT' ? 'primary' : 'secondary'}
+                              size="sm"
+                              onClick={() => navigate(`/quotations/${quote.id}`)}
+                            >
+                              {quote.status === 'DRAFT' ? 'Edit' : 'View'}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Table Server-Side Pagination */}
+              <div className="mt-4 border-t border-[#eef2f9] pt-4">
+                <Pagination
+                  currentPage={tablePage}
+                  totalPages={data?.totalPages || 1}
+                  totalItems={data?.total || 0}
+                  pageSize={tablePageSize}
+                  onPageChange={setTablePage}
+                  onPageSizeChange={(newSize) => {
+                    setTablePageSize(newSize);
+                    setTablePage(1);
+                  }}
+                  pageSizeOptions={[10, 20, 50]}
+                  itemLabel="deals"
+                  isLoading={isLoading}
+                />
+              </div>
+            </>
           )}
         </div>
       )}

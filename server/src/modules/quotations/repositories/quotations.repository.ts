@@ -14,7 +14,7 @@ import {
   User,
   Product,
 } from '../../../database/schema/index.js';
-import { eq, ilike, and, or, sql, desc, count } from 'drizzle-orm';
+import { eq, ilike, and, or, sql, desc, count, inArray } from 'drizzle-orm';
 import { QuotationQueryInput } from '../validators/quotation.validator.js';
 
 export interface QuotationItemWithProduct extends QuotationItem {
@@ -60,8 +60,12 @@ export class QuotationsRepository {
       conditions.push(eq(quotations.createdBy, createdBy));
     }
 
-    if (status) {
-      conditions.push(eq(quotations.status, status));
+    if (status && status.length > 0) {
+      if (status.length === 1) {
+        conditions.push(eq(quotations.status, status[0]));
+      } else {
+        conditions.push(inArray(quotations.status, status));
+      }
     }
 
     if (customerId) {

@@ -15,6 +15,8 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useQuotationsList, useSubmitQuotationMutation } from '../hooks/useQuotationsQuery';
 import { BackendQuotation, BackendQuotationStatus } from '../types/quotationApi.types';
 import { formatINR, formatDate } from '@/utils/formatters';
@@ -23,6 +25,8 @@ export const QuotationsListPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Approval Submission State
   const [selectedQuoteForApproval, setSelectedQuoteForApproval] = useState<BackendQuotation | null>(null);
@@ -67,8 +71,12 @@ export const QuotationsListPage: React.FC = () => {
     }
   };
 
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
   const queryParams = {
-    search: searchQuery.trim() || undefined,
+    page: currentPage,
+    limit: pageSize,
+    search: debouncedSearch.trim() || undefined,
     status: selectedStatus !== 'all' ? (selectedStatus as BackendQuotationStatus) : undefined,
   };
 
@@ -148,7 +156,10 @@ export const QuotationsListPage: React.FC = () => {
             type="text"
             placeholder="Search by quote number or customer..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             className="w-full bg-transparent text-xs text-[#17213a] placeholder:text-gray-400 focus:outline-none"
           />
         </div>
@@ -167,7 +178,10 @@ export const QuotationsListPage: React.FC = () => {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setSelectedStatus(tab.id)}
+              onClick={() => {
+                setSelectedStatus(tab.id);
+                setCurrentPage(1);
+              }}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
                 selectedStatus === tab.id
                   ? 'bg-[#3568ed] text-white font-semibold'
@@ -220,7 +234,8 @@ export const QuotationsListPage: React.FC = () => {
               </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-[#eef2f9] bg-[#fbfcfe] px-6 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#8491aa]">
@@ -309,7 +324,26 @@ export const QuotationsListPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          )}
+
+            {/* Pagination Controls Footer */}
+            <div className="border-t border-[#eef2f9] px-6 py-4 bg-[#fbfcfe]">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={data?.totalPages || 1}
+                totalItems={data?.total || 0}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize);
+                  setCurrentPage(1);
+                }}
+                pageSizeOptions={[10, 20, 50]}
+                itemLabel="quotations"
+                isLoading={isLoading}
+              />
+            </div>
+          </>
+        )}
         </CardContent>
       </Card>
 

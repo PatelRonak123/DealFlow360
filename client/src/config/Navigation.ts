@@ -44,7 +44,7 @@ export const navigationConfig: NavSection[] = [
       { label: 'Dashboard', to: '/customer/dashboard', icon: LayoutGrid, roles: [ROLES.CUSTOMER] },
 
       // Sales Operations
-      { label: 'Create Quote', to: '/quotations/new', icon: PlusCircle, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER] },
+      { label: 'Create Quote', to: '/quotations/new', icon: PlusCircle, roles: [ROLES.SALES_MANAGER] },
       { label: 'Quotations', to: '/quotations', icon: FileText, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN] },
       { label: 'Pipeline & Deals', to: '/pipeline', icon: Kanban, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER] },
       { label: 'Customer Accounts', to: '/customers', icon: Users, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN] },
