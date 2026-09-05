@@ -1,8 +1,18 @@
-/**
- * Drizzle ORM Schema Export
- * 
- * Domain schemas should be defined in their respective schema files or domain modules
- * and exported here. Business tables will be added here as features are implemented.
- */
-
-export {};
+export * from './users.js';
+export * from './roles.js';
+export * from './permissions.js';
+export * from './userRoles.js';
+export * from './rolePermissions.js';
+export * from './refreshTokens.js';
+export * from './customerTiers.js';
+export * from './productCategories.js';
+export * from './products.js';
+export * from './customers.js';
+export * from './priceLists.js';
+export * from './priceListItems.js';
+export * from './customerTierDiscountRules.js';
+export * from './categoryDiscountRules.js';
+export * from './quotations.js';
+export * from './quotationItems.js';
+export * from './quotationApprovals.js';
+export * from './quotationDiscountEvaluations.js';
