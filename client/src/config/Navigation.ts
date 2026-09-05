@@ -16,6 +16,7 @@ import {
   LucideIcon,
   PlusCircle,
   Truck,
+  User,
 } from 'lucide-react';
 import { UserRole } from '@/types/Auth';
 import { normalizeRole, ROLES } from '@/lib/accessControl';
@@ -64,6 +65,7 @@ export const navigationConfig: NavSection[] = [
       { label: 'Orders', to: '/customer/orders', icon: Truck, roles: [ROLES.CUSTOMER] },
       { label: 'Invoices', to: '/customer/invoices', icon: Receipt, roles: [ROLES.CUSTOMER] },
       { label: 'Payments', to: '/customer/payments', icon: CreditCard, roles: [ROLES.CUSTOMER] },
+      { label: 'Profile', to: '/customer/profile', icon: User, roles: [ROLES.CUSTOMER] },
 
       // Admin Management
       { label: 'User Management', to: '/admin/users', icon: ShieldCheck, roles: [ROLES.ADMIN] },

@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { quotationsApi } from '../api/quotationsApi';
 import {
   QuotationQueryParams,
@@ -19,13 +19,15 @@ export const quotationKeys = {
   evaluation: (id: string) => [...quotationKeys.detail(id), 'evaluation'] as const,
 };
 
-// Hook: List Quotations
+// Hook: List Quotations with high performance caching & seamless pagination
 export function useQuotationsList(params?: QuotationQueryParams) {
   return useQuery({
     queryKey: quotationKeys.list(params),
     queryFn: () => quotationsApi.getQuotations(params),
-    staleTime: 1000 * 30, // 30 seconds fresh
-    placeholderData: (previousData) => previousData,
+    staleTime: 1000 * 60, // 60 seconds fresh
+    gcTime: 1000 * 60 * 5, // 5 minutes cache retention
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false, // Prevent redundant background fetches on tab clicks
   });
 }
 

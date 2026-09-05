@@ -12,6 +12,8 @@ import {
   AlertCircle,
   Search,
   Tag,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -22,6 +24,8 @@ import { BackendQuotationStatus } from '@/features/quotations/types/quotationApi
 import { formatINR, formatCompactINR, formatDate } from '@/utils/formatters';
 
 export type PipelineStageKey = 'draft' | 'approval' | 'approved' | 'sent';
+
+const INITIAL_VISIBLE_CARDS = 3;
 
 export interface PipelineStageConfig {
   id: PipelineStageKey;
@@ -105,9 +109,10 @@ export const PipelinePage: React.FC = () => {
   }, [viewMode, tablePage, tablePageSize, debouncedSearch, filterStage]);
 
   // Fetch real quotations from backend
-  const { data, isLoading, isError, error, refetch } = useQuotationsList(queryParams);
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuotationsList(queryParams);
 
   const quotations = useMemo(() => data?.items || [], [data?.items]);
+  const isInitialLoading = isLoading && quotations.length === 0;
 
   // Map backend status to pipeline stage key
   const getStageForQuotation = (status: BackendQuotationStatus): PipelineStageKey | 'closed' => {
@@ -157,6 +162,42 @@ export const PipelinePage: React.FC = () => {
     () => displayedQuotations.reduce((sum, q) => sum + (parseFloat(String(q.totalAmount)) || 0), 0),
     [displayedQuotations]
   );
+
+  // Track expanded/collapsed state per stage column
+  const [expandedColumns, setExpandedColumns] = useState<Record<string, boolean>>({});
+
+  const toggleColumnExpand = (colId: string) => {
+    setExpandedColumns((prev) => ({
+      ...prev,
+      [colId]: !prev[colId],
+    }));
+  };
+
+  // Determine if any stage has more than INITIAL_VISIBLE_CARDS to display global toggle
+  const hasExpandableColumns = useMemo(() => {
+    return PIPELINE_STAGES.some((col) => {
+      const count = kanbanFilteredQuotations.filter((q) => col.backendStatuses.includes(q.status)).length;
+      return count > INITIAL_VISIBLE_CARDS;
+    });
+  }, [kanbanFilteredQuotations]);
+
+  const areAllColumnsExpanded = useMemo(() => {
+    const expandableStages = PIPELINE_STAGES.filter((col) => {
+      const count = kanbanFilteredQuotations.filter((q) => col.backendStatuses.includes(q.status)).length;
+      return count > INITIAL_VISIBLE_CARDS;
+    });
+    if (expandableStages.length === 0) return false;
+    return expandableStages.every((col) => Boolean(expandedColumns[col.id]));
+  }, [kanbanFilteredQuotations, expandedColumns]);
+
+  const toggleAllColumns = () => {
+    const nextState = !areAllColumnsExpanded;
+    const updated: Record<string, boolean> = {};
+    PIPELINE_STAGES.forEach((col) => {
+      updated[col.id] = nextState;
+    });
+    setExpandedColumns(updated);
+  };
 
   const getTierBadgeVariant = (tierName?: string): 'gold' | 'silver' | 'bronze' | 'default' => {
     if (!tierName) return 'default';
@@ -312,15 +353,36 @@ export const PipelinePage: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex items-center gap-4 text-xs">
+        <div className="flex flex-wrap items-center gap-4 text-xs">
+          {viewMode === 'kanban' && hasExpandableColumns && (
+            <button
+              type="button"
+              onClick={toggleAllColumns}
+              className="flex items-center gap-1.5 rounded-lg border border-[#d9e2f5] bg-[#f8faff] px-2.5 py-1 text-xs font-semibold text-[#3568ed] hover:bg-[#edf2fd] transition cursor-pointer shadow-2xs"
+            >
+              {areAllColumnsExpanded ? (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5 text-[#3568ed]" />
+                  <span>Collapse All</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5 text-[#3568ed]" />
+                  <span>Expand All</span>
+                </>
+              )}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => refetch()}
-            className="flex items-center gap-1 text-gray-500 hover:text-gray-800 transition"
+            className="flex items-center gap-1 text-gray-500 hover:text-gray-800 transition cursor-pointer disabled:opacity-50"
             title="Refresh pipeline"
+            disabled={isFetching}
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            <span>Refresh</span>
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-[#3568ed]' : ''}`} />
+            <span>{isFetching ? 'Syncing...' : 'Refresh'}</span>
           </button>
           <div className="flex items-center gap-1.5 text-[#59657d]">
             <span>Active Deals:</span>
@@ -356,7 +418,7 @@ export const PipelinePage: React.FC = () => {
       )}
 
       {/* Loading Skeletons */}
-      {isLoading && (
+      {isInitialLoading && (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {[1, 2, 3, 4].map((idx) => (
             <div
@@ -374,8 +436,8 @@ export const PipelinePage: React.FC = () => {
       )}
 
       {/* Kanban Board View */}
-      {!isLoading && !isError && viewMode === 'kanban' && (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      {!isInitialLoading && !isError && viewMode === 'kanban' && (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4 items-start">
           {PIPELINE_STAGES.map((col) => {
             const colQuotes = kanbanFilteredQuotations.filter((q) =>
               col.backendStatuses.includes(q.status)
@@ -385,18 +447,39 @@ export const PipelinePage: React.FC = () => {
               0
             );
 
+            const isExpanded = Boolean(expandedColumns[col.id]);
+            const hasMore = colQuotes.length > INITIAL_VISIBLE_CARDS;
+            const hiddenCount = colQuotes.length - INITIAL_VISIBLE_CARDS;
+            const visibleQuotes = isExpanded ? colQuotes : colQuotes.slice(0, INITIAL_VISIBLE_CARDS);
+
             return (
               <div
                 key={col.id}
-                className="flex flex-col rounded-2xl border border-[#e7ebf7] bg-[#fbfcfe] p-4 min-h-[500px]"
+                className="flex flex-col rounded-2xl border border-[#e7ebf7] bg-[#fbfcfe] p-4 min-h-[460px] transition-all"
               >
                 {/* Stage Header */}
                 <div className="mb-3 border-b border-[#eef2f9] pb-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-bold text-[#17213a]">{col.label}</span>
-                    <span className="rounded-full bg-white border border-gray-200 px-2 py-0.5 text-[11px] font-bold text-gray-600">
-                      {colQuotes.length}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded-full bg-white border border-gray-200 px-2 py-0.5 text-[11px] font-bold text-gray-600">
+                        {hasMore && !isExpanded ? `${visibleQuotes.length} of ${colQuotes.length}` : colQuotes.length}
+                      </span>
+                      {hasMore && (
+                        <button
+                          type="button"
+                          onClick={() => toggleColumnExpand(col.id)}
+                          title={isExpanded ? `Collapse ${col.label}` : `Expand ${col.label}`}
+                          className="rounded-md p-1 text-gray-400 hover:bg-white hover:text-[#3568ed] hover:shadow-xs border border-transparent hover:border-gray-200 transition cursor-pointer"
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-[11px] text-[#71809f]">
                     <span>{col.description}</span>
@@ -411,107 +494,134 @@ export const PipelinePage: React.FC = () => {
                       <p className="text-xs text-gray-400">No quotes in this stage</p>
                     </div>
                   ) : (
-                    colQuotes.map((quote) => {
-                      const customerName = quote.customer?.companyName || 'Enterprise Account';
-                      const tierName = quote.customer?.customerTier?.name;
-                      const tierBadge = getTierBadgeVariant(tierName);
-                      const amount = parseFloat(String(quote.totalAmount)) || 0;
-                      const discount = parseFloat(String(quote.discountAmount)) || 0;
-                      const statusVariant = getStatusBadgeVariant(quote.status);
-                      const statusLabel = getStatusLabel(quote.status);
+                    <>
+                      {visibleQuotes.map((quote) => {
+                        const customerName = quote.customer?.companyName || 'Enterprise Account';
+                        const tierName = quote.customer?.customerTier?.name;
+                        const tierBadge = getTierBadgeVariant(tierName);
+                        const amount = parseFloat(String(quote.totalAmount)) || 0;
+                        const discount = parseFloat(String(quote.discountAmount)) || 0;
+                        const statusVariant = getStatusBadgeVariant(quote.status);
+                        const statusLabel = getStatusLabel(quote.status);
 
-                      const needsApproval =
-                        quote.status === 'PENDING_MANAGER_APPROVAL' ||
-                        quote.status === 'PENDING_FINANCE_APPROVAL';
+                        const needsApproval =
+                          quote.status === 'PENDING_MANAGER_APPROVAL' ||
+                          quote.status === 'PENDING_FINANCE_APPROVAL';
 
-                      return (
-                        <div
-                          key={quote.id}
-                          className={`rounded-xl border border-[#e4eaf6] bg-white p-4 shadow-[0_4px_12px_rgba(64,86,145,0.04)] hover:border-[#b8cbf5] hover:shadow-md transition-all ${col.color} border-t-4`}
-                        >
-                          {/* Header: Customer & Tier */}
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                              <h4 className="text-xs font-bold text-[#17213a] truncate" title={customerName}>
-                                {customerName}
-                              </h4>
-                            </div>
-                            {tierName && (
-                              <Badge variant={tierBadge} size="sm">
-                                {tierName}
-                              </Badge>
-                            )}
-                          </div>
-
-                          {/* Quote Number & Notes */}
-                          <div className="mt-2">
-                            <div className="flex items-center gap-1.5">
-                              <Tag className="h-3 w-3 text-[#3568ed] shrink-0" />
-                              <span className="text-xs font-bold text-[#3568ed]">
-                                {quote.quotationNumber}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-xs font-medium text-[#475467] line-clamp-2">
-                              {quote.notes || `Commercial proposal for ${customerName}`}
-                            </p>
-                          </div>
-
-                          {/* Amount & Discount */}
-                          <div className="mt-3 flex items-center justify-between border-t border-[#f2f5fb] pt-2.5">
-                            <div>
-                              <span className="text-[10px] text-gray-400 block uppercase">Quote Value</span>
-                              <span className="text-sm font-bold text-[#17213a]">
-                                {formatINR(amount)}
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-[10px] text-gray-400 block uppercase">Discount</span>
-                              <span className={`text-xs font-bold ${discount > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
-                                {discount > 0 ? formatINR(discount) : '0%'}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Governance Review Callout if pending approval */}
-                          {needsApproval && (
-                            <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200/80 p-2 text-[11px] text-amber-800">
-                              <div className="flex items-center gap-1 font-semibold">
-                                <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
-                                <span>{statusLabel}</span>
+                        return (
+                          <div
+                            key={quote.id}
+                            className={`rounded-xl border border-[#e4eaf6] bg-white p-4 shadow-[0_4px_12px_rgba(64,86,145,0.04)] hover:border-[#b8cbf5] hover:shadow-md transition-all ${col.color} border-t-4`}
+                          >
+                            {/* Header: Customer & Tier */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                                <h4 className="text-xs font-bold text-[#17213a] truncate" title={customerName}>
+                                  {customerName}
+                                </h4>
                               </div>
-                              <p className="mt-0.5 text-[10px] text-amber-700 leading-tight">
-                                High discount requires discount governance evaluation.
+                              {tierName && (
+                                <Badge variant={tierBadge} size="sm">
+                                  {tierName}
+                                </Badge>
+                              )}
+                            </div>
+
+                            {/* Quote Number & Notes */}
+                            <div className="mt-2">
+                              <div className="flex items-center gap-1.5">
+                                <Tag className="h-3 w-3 text-[#3568ed] shrink-0" />
+                                <span className="text-xs font-bold text-[#3568ed]">
+                                  {quote.quotationNumber}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs font-medium text-[#475467] line-clamp-2">
+                                {quote.notes || `Commercial proposal for ${customerName}`}
                               </p>
                             </div>
-                          )}
 
-                          {/* Expiry Date */}
-                          <div className="mt-2.5 flex items-center justify-between text-[10px] text-gray-400">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              Expires: {quote.expiryDate ? formatDate(quote.expiryDate) : '30 days'}
-                            </span>
-                            <Badge variant={statusVariant} size="sm">
-                              {statusLabel}
-                            </Badge>
+                            {/* Amount & Discount */}
+                            <div className="mt-3 flex items-center justify-between border-t border-[#f2f5fb] pt-2.5">
+                              <div>
+                                <span className="text-[10px] text-gray-400 block uppercase">Quote Value</span>
+                                <span className="text-sm font-bold text-[#17213a]">
+                                  {formatINR(amount)}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] text-gray-400 block uppercase">Discount</span>
+                                <span className={`text-xs font-bold ${discount > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+                                  {discount > 0 ? formatINR(discount) : '0%'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Governance Review Callout if pending approval */}
+                            {needsApproval && (
+                              <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200/80 p-2 text-[11px] text-amber-800">
+                                <div className="flex items-center gap-1 font-semibold">
+                                  <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+                                  <span>{statusLabel}</span>
+                                </div>
+                                <p className="mt-0.5 text-[10px] text-amber-700 leading-tight">
+                                  High discount requires discount governance evaluation.
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Expiry Date */}
+                            <div className="mt-2.5 flex items-center justify-between text-[10px] text-gray-400">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                Expires: {quote.expiryDate ? formatDate(quote.expiryDate) : '30 days'}
+                              </span>
+                              <Badge variant={statusVariant} size="sm">
+                                {statusLabel}
+                              </Badge>
+                            </div>
+
+                            {/* Card Actions */}
+                            <div className="mt-3 border-t border-[#f2f5fb] pt-2.5">
+                              <Button
+                                variant={quote.status === 'DRAFT' ? 'primary' : 'secondary'}
+                                size="sm"
+                                className="w-full text-xs"
+                                leftIcon={<FileText className="h-3.5 w-3.5" />}
+                                onClick={() => navigate(`/quotations/${quote.id}`)}
+                              >
+                                {quote.status === 'DRAFT' ? 'Open in Builder' : 'View Quote Details'}
+                              </Button>
+                            </div>
                           </div>
+                        );
+                      })}
 
-                          {/* Card Actions */}
-                          <div className="mt-3 border-t border-[#f2f5fb] pt-2.5">
-                            <Button
-                              variant={quote.status === 'DRAFT' ? 'primary' : 'secondary'}
-                              size="sm"
-                              className="w-full text-xs"
-                              leftIcon={<FileText className="h-3.5 w-3.5" />}
-                              onClick={() => navigate(`/quotations/${quote.id}`)}
+                      {/* Expand / Collapse Dropdown Button */}
+                      {hasMore && (
+                        <div className="pt-1">
+                          {!isExpanded ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleColumnExpand(col.id)}
+                              className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-[#c5d5f5] bg-[#f0f4fe]/80 hover:bg-[#e4ecfc] hover:border-[#3568ed] py-2.5 px-3 text-xs font-semibold text-[#3568ed] transition-all cursor-pointer group shadow-2xs"
                             >
-                              {quote.status === 'DRAFT' ? 'Open in Builder' : 'View Quote Details'}
-                            </Button>
-                          </div>
+                              <span>Show {hiddenCount} more {hiddenCount === 1 ? 'deal' : 'deals'}</span>
+                              <ChevronDown className="h-4 w-4 text-[#3568ed] transition-transform duration-200 group-hover:translate-y-0.5" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => toggleColumnExpand(col.id)}
+                              className="w-full flex items-center justify-center gap-2 rounded-xl border border-[#dce4f7] bg-white hover:bg-[#f8faff] hover:border-[#b8cbf5] py-2.5 px-3 text-xs font-semibold text-[#59657d] hover:text-[#17213a] transition-all cursor-pointer group shadow-2xs"
+                            >
+                              <span>Show fewer deals</span>
+                              <ChevronUp className="h-4 w-4 text-[#59657d] transition-transform duration-200 group-hover:-translate-y-0.5" />
+                            </button>
+                          )}
                         </div>
-                      );
-                    })
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -521,7 +631,7 @@ export const PipelinePage: React.FC = () => {
       )}
 
       {/* Table View */}
-      {!isLoading && !isError && viewMode === 'table' && (
+      {!isInitialLoading && !isError && viewMode === 'table' && (
         <div className="rounded-2xl border border-[#e7ebf7] bg-white p-5 shadow-sm">
           {quotations.length === 0 ? (
             <div className="py-12 text-center text-xs text-gray-400">
@@ -616,7 +726,7 @@ export const PipelinePage: React.FC = () => {
                   }}
                   pageSizeOptions={[10, 20, 50]}
                   itemLabel="deals"
-                  isLoading={isLoading}
+                  isLoading={isInitialLoading}
                 />
               </div>
             </>

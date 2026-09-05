@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   PlusCircle,
@@ -73,14 +73,17 @@ export const QuotationsListPage: React.FC = () => {
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
-  const queryParams = {
-    page: currentPage,
-    limit: pageSize,
-    search: debouncedSearch.trim() || undefined,
-    status: selectedStatus !== 'all' ? (selectedStatus as BackendQuotationStatus) : undefined,
-  };
+  const queryParams = useMemo(
+    () => ({
+      page: currentPage,
+      limit: pageSize,
+      search: debouncedSearch.trim() || undefined,
+      status: selectedStatus !== 'all' ? (selectedStatus as BackendQuotationStatus) : undefined,
+    }),
+    [currentPage, pageSize, debouncedSearch, selectedStatus]
+  );
 
-  const { data, isLoading, isError, error, refetch } = useQuotationsList(queryParams);
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuotationsList(queryParams);
   const quotations = data?.items || [];
 
   const statusVariantMap: Record<
@@ -196,12 +199,61 @@ export const QuotationsListPage: React.FC = () => {
 
       {/* Quotations Table Card */}
       <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center p-12 text-center">
-              <RefreshCw className="h-8 w-8 animate-spin text-[#3568ed] mb-3" />
-              <p className="text-sm font-semibold text-[#17213a]">Loading quotations...</p>
-              <p className="text-xs text-[#71809f]">Fetching live quotations from backend.</p>
+        <CardContent className="p-0 relative">
+          {/* Subtle loading progress bar during background data refetching */}
+          {isFetching && quotations.length > 0 && (
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-100 overflow-hidden z-10">
+              <div className="h-full bg-[#3568ed] animate-pulse w-full" />
+            </div>
+          )}
+
+          {isLoading && quotations.length === 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#eef2f9] bg-[#fbfcfe] px-6 py-3.5 text-[11px] font-bold uppercase tracking-wider text-[#8491aa]">
+                    <th className="py-3 px-6 font-semibold">Quotation Number</th>
+                    <th className="py-3 font-semibold">Customer</th>
+                    <th className="py-3 font-semibold">Total Amount</th>
+                    <th className="py-3 font-semibold">Discount</th>
+                    <th className="py-3 font-semibold">Status</th>
+                    <th className="py-3 font-semibold">Created Date</th>
+                    <th className="py-3 font-semibold">Expiry Date</th>
+                    <th className="py-3 px-6 font-semibold text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f2f5fb]">
+                  {[1, 2, 3, 4, 5].map((idx) => (
+                    <tr key={idx} className="animate-pulse">
+                      <td className="py-4 px-6">
+                        <div className="h-3.5 w-24 bg-gray-200 rounded" />
+                      </td>
+                      <td className="py-4">
+                        <div className="h-3.5 w-36 bg-gray-200 rounded mb-1.5" />
+                        <div className="h-2.5 w-16 bg-gray-100 rounded" />
+                      </td>
+                      <td className="py-4">
+                        <div className="h-3.5 w-20 bg-gray-200 rounded" />
+                      </td>
+                      <td className="py-4">
+                        <div className="h-3.5 w-16 bg-gray-200 rounded" />
+                      </td>
+                      <td className="py-4">
+                        <div className="h-5 w-24 bg-gray-200 rounded-full" />
+                      </td>
+                      <td className="py-4">
+                        <div className="h-3.5 w-20 bg-gray-200 rounded" />
+                      </td>
+                      <td className="py-4">
+                        <div className="h-3.5 w-20 bg-gray-200 rounded" />
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <div className="h-7 w-16 bg-gray-200 rounded ml-auto" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : isError ? (
             <div className="flex flex-col items-center justify-center p-12 text-center">

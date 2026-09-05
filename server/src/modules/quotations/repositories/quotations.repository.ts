@@ -36,7 +36,20 @@ export interface PaginatedQuotations {
   totalPages: number;
 }
 
+interface CachedQuotations {
+  data: PaginatedQuotations;
+  expiresAt: number;
+}
+
+const quotationsCache = new Map<string, CachedQuotations>();
+const inFlightQuotations = new Map<string, Promise<PaginatedQuotations>>();
+const QUOTATIONS_CACHE_TTL_MS = 15 * 1000; // 15 seconds fast cache
+
 export class QuotationsRepository {
+  invalidateCache(): void {
+    quotationsCache.clear();
+  }
+
   async generateNextQuotationNumber(client: Database = db): Promise<string> {
     const result = await client.execute(sql`SELECT nextval('quotation_number_seq') as seq_num`);
     const row = result.rows[0] as { seq_num: string | number };
@@ -49,82 +62,118 @@ export class QuotationsRepository {
     userOwnershipId?: string,
     client: Database = db
   ): Promise<PaginatedQuotations> {
-    const { page = 1, limit = 20, search, status, customerId, createdBy } = query;
-    const offset = (page - 1) * limit;
-
-    const conditions = [];
-
-    if (userOwnershipId) {
-      conditions.push(eq(quotations.createdBy, userOwnershipId));
-    } else if (createdBy) {
-      conditions.push(eq(quotations.createdBy, createdBy));
+    const cacheKey = JSON.stringify({ query, userOwnershipId });
+    const cached = quotationsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
     }
 
-    if (status && status.length > 0) {
-      if (status.length === 1) {
-        conditions.push(eq(quotations.status, status[0]));
-      } else {
-        conditions.push(inArray(quotations.status, status));
+    if (inFlightQuotations.has(cacheKey)) {
+      return inFlightQuotations.get(cacheKey)!;
+    }
+
+    const fetchPromise = (async (): Promise<PaginatedQuotations> => {
+      try {
+        const { page = 1, limit = 20, search, status, customerId, createdBy } = query;
+        const offset = (page - 1) * limit;
+
+        const conditions = [];
+
+        if (userOwnershipId) {
+          conditions.push(eq(quotations.createdBy, userOwnershipId));
+        } else if (createdBy) {
+          conditions.push(eq(quotations.createdBy, createdBy));
+        }
+
+        if (status && status.length > 0) {
+          if (status.length === 1) {
+            conditions.push(eq(quotations.status, status[0]));
+          } else {
+            conditions.push(inArray(quotations.status, status));
+          }
+        }
+
+        if (customerId) {
+          conditions.push(eq(quotations.customerId, customerId));
+        }
+
+        if (search) {
+          conditions.push(
+            or(
+              ilike(quotations.quotationNumber, `%${search}%`),
+              ilike(customers.companyName, `%${search}%`)
+            )
+          );
+        }
+
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+        // Count query: skip customer join if no search is performed to save DB work
+        const countQuery = search
+          ? client
+              .select({ count: count() })
+              .from(quotations)
+              .leftJoin(customers, eq(quotations.customerId, customers.id))
+              .where(whereClause)
+          : client
+              .select({ count: count() })
+              .from(quotations)
+              .where(whereClause);
+
+        // Rows query: fetch quotations with joined customer and user
+        const rowsQuery = client
+          .select({
+            quotation: quotations,
+            customer: customers,
+            priceList: priceLists,
+            user: {
+              id: users.id,
+              name: users.name,
+              email: users.email,
+            },
+          })
+          .from(quotations)
+          .leftJoin(customers, eq(quotations.customerId, customers.id))
+          .leftJoin(priceLists, eq(quotations.priceListId, priceLists.id))
+          .leftJoin(users, eq(quotations.createdBy, users.id))
+          .where(whereClause)
+          .orderBy(desc(quotations.createdAt))
+          .limit(limit)
+          .offset(offset);
+
+        // Execute both queries concurrently to cut latency in half
+        const [[totalResult], rows] = await Promise.all([countQuery, rowsQuery]);
+
+        const total = Number(totalResult?.count || 0);
+
+        const items: QuotationWithDetails[] = rows.map((r) => ({
+          ...r.quotation,
+          customer: r.customer || undefined,
+          priceList: r.priceList || undefined,
+          createdByUser: r.user && r.user.id ? (r.user as Pick<User, 'id' | 'name' | 'email'>) : undefined,
+        }));
+
+        const result: PaginatedQuotations = {
+          items,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+        };
+
+        quotationsCache.set(cacheKey, {
+          data: result,
+          expiresAt: Date.now() + QUOTATIONS_CACHE_TTL_MS,
+        });
+
+        return result;
+      } finally {
+        inFlightQuotations.delete(cacheKey);
       }
-    }
+    })();
 
-    if (customerId) {
-      conditions.push(eq(quotations.customerId, customerId));
-    }
-
-    if (search) {
-      conditions.push(
-        or(
-          ilike(quotations.quotationNumber, `%${search}%`),
-          ilike(customers.companyName, `%${search}%`)
-        )
-      );
-    }
-
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    const [totalResult] = await client
-      .select({ count: count() })
-      .from(quotations)
-      .leftJoin(customers, eq(quotations.customerId, customers.id))
-      .where(whereClause);
-
-    const total = Number(totalResult?.count || 0);
-
-    const rows = await client
-      .select({
-        quotation: quotations,
-        customer: customers,
-        priceList: priceLists,
-        user: {
-          id: users.id,
-          name: users.name,
-          email: users.email,
-        },
-      })
-      .from(quotations)
-      .leftJoin(customers, eq(quotations.customerId, customers.id))
-      .leftJoin(priceLists, eq(quotations.priceListId, priceLists.id))
-      .leftJoin(users, eq(quotations.createdBy, users.id))
-      .where(whereClause)
-      .orderBy(desc(quotations.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    const items: QuotationWithDetails[] = rows.map((r) => ({
-      ...r.quotation,
-      customer: r.customer || undefined,
-      priceList: r.priceList || undefined,
-      createdByUser: r.user && r.user.id ? (r.user as Pick<User, 'id' | 'name' | 'email'>) : undefined,
-    }));
-
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit) || 1,
-    };
+    inFlightQuotations.set(cacheKey, fetchPromise);
+    return fetchPromise;
   }
 
   async findById(id: string, client: Database = db): Promise<QuotationWithDetails | undefined> {
@@ -154,6 +203,7 @@ export class QuotationsRepository {
 
   async create(data: NewQuotation, client: Database = db): Promise<Quotation> {
     const [created] = await client.insert(quotations).values(data).returning();
+    this.invalidateCache();
     return created;
   }
 
@@ -171,6 +221,7 @@ export class QuotationsRepository {
       .where(eq(quotations.id, id))
       .returning();
 
+    this.invalidateCache();
     return updated;
   }
 
@@ -198,6 +249,7 @@ export class QuotationsRepository {
 
   async createItem(data: NewQuotationItem, client: Database = db): Promise<QuotationItem> {
     const [created] = await client.insert(quotationItems).values(data).returning();
+    this.invalidateCache();
     return created;
   }
 
@@ -215,6 +267,7 @@ export class QuotationsRepository {
       .where(eq(quotationItems.id, itemId))
       .returning();
 
+    this.invalidateCache();
     return updated;
   }
 
@@ -224,7 +277,11 @@ export class QuotationsRepository {
       .where(eq(quotationItems.id, itemId))
       .returning();
 
-    return result.length > 0;
+    if (result.length > 0) {
+      this.invalidateCache();
+      return true;
+    }
+    return false;
   }
 
   async recalculateAndSaveTotals(quotationId: string, client: Database = db): Promise<Quotation> {
@@ -253,6 +310,7 @@ export class QuotationsRepository {
       .where(eq(quotations.id, quotationId))
       .returning();
 
+    this.invalidateCache();
     return updated;
   }
 }
