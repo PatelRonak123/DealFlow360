@@ -15,7 +15,7 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
   const notifRef = useRef<HTMLDivElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
 
-  const activeRole = normalizeRole(user?.roles?.[0] || user?.activeRole || user?.role || ROLES.SALES_REP);
+  const activeRole = normalizeRole(user?.activeRole || user?.role || ROLES.SALES_REP);
   const isCustomer = activeRole === ROLES.CUSTOMER;
 
   // Available roles for switching: All assigned user roles, or full set if Admin
@@ -100,7 +100,7 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
   ];
 
   return (
-    <header className="sticky top-0 z-20 flex h-18 items-center justify-between gap-6 border-b border-[#e7ebf7] bg-white/95 px-8 backdrop-blur shadow-[0_2px_12px_rgba(61,82,140,0.04)]">
+    <header className="sticky top-0 z-20 flex h-18 shrink-0 items-center justify-between gap-6 border-b border-[#e7ebf7] bg-white/95 px-8 backdrop-blur shadow-[0_2px_12px_rgba(61,82,140,0.04)]">
       {/* Search Input */}
       <div className="flex h-10 w-full max-w-sm items-center gap-3 rounded-xl border border-[#e4e9f7] bg-[#f7f8ff] px-3.5 text-[#8491aa] focus-within:border-[#3568ed] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#3568ed]/15 transition-all">
         <Search className="h-4 w-4 shrink-0 text-[#8491aa]" />
@@ -246,4 +246,4 @@ export function Topbar({ notificationCount = 3 }: { notificationCount?: number }
       </div>
     </header>
   );
-}
+}

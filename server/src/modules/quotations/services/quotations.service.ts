@@ -17,7 +17,8 @@ import { customersRepository } from '../../customers/repositories/customers.repo
 import { priceListsRepository } from '../../price-lists/repositories/priceLists.repository.js';
 import { productsRepository } from '../../products/repositories/products.repository.js';
 import { pricingService } from '../../pricing/services/pricing.service.js';
-import { Quotation, QuotationItem } from '../../../database/schema/index.js';
+import { Quotation, QuotationItem, quotations, quotationItems } from '../../../database/schema/index.js';
+import { db } from '../../../database/db.js';
 import { AuthUserContext } from '../../rbac/types/index.js';
 import { Roles } from '../../rbac/constants/roles.js';
 import {
@@ -102,7 +103,117 @@ export class QuotationsService {
       throw new BadRequestError(`Cannot create quotation with inactive price list '${priceList.name}'`);
     }
 
-    // 3. Generate monotonic unique quotation number
+    const targetCurrency = data.currency ? data.currency.trim().toUpperCase() : priceList.currency;
+
+    // 3. Optimized single-request batch creation if items are provided
+    if (data.items && data.items.length > 0) {
+      // Pre-validate and resolve products in parallel
+      const productMap = new Map();
+      for (const item of data.items) {
+        if (!productMap.has(item.productId)) {
+          const prod = await productsRepository.findById(item.productId);
+          if (!prod) {
+            throw new NotFoundError(`Product with ID '${item.productId}' not found`);
+          }
+          if (!prod.isActive) {
+            throw new BadRequestError(`Cannot add inactive product '${prod.name}' to quotation`);
+          }
+          productMap.set(item.productId, prod);
+        }
+      }
+
+      // Resolve prices and calculations concurrently
+      const resolvedItems = await Promise.all(
+        data.items.map(async (item) => {
+          const product = productMap.get(item.productId)!;
+          const priceResolution = await pricingService.resolveProductPrice({
+            productId: item.productId,
+            priceListId: data.priceListId,
+            currency: targetCurrency,
+          });
+
+          const unitPriceNum = parseFloat(priceResolution.effectivePrice) || 0;
+          const quantity = item.quantity;
+          const discountPercentNum = parseFloat(item.discountPercent) || 0;
+
+          const grossAmountNum = unitPriceNum * quantity;
+          const discountAmountNum = (grossAmountNum * discountPercentNum) / 100;
+          const netAmountNum = grossAmountNum - discountAmountNum;
+
+          return {
+            productId: item.productId,
+            productNameSnapshot: product.name,
+            skuSnapshot: product.sku,
+            quantity,
+            unitPrice: unitPriceNum.toFixed(2),
+            discountPercent: discountPercentNum.toFixed(2),
+            grossAmount: grossAmountNum.toFixed(2),
+            discountAmount: discountAmountNum.toFixed(2),
+            netAmount: netAmountNum.toFixed(2),
+          };
+        })
+      );
+
+      // In-memory total computation
+      let subtotalNum = 0;
+      let discountAmountNum = 0;
+      let totalAmountNum = 0;
+
+      for (const ri of resolvedItems) {
+        subtotalNum += parseFloat(ri.grossAmount) || 0;
+        discountAmountNum += parseFloat(ri.discountAmount) || 0;
+        totalAmountNum += parseFloat(ri.netAmount) || 0;
+      }
+
+      // Execute header and line items insertion in a single atomic transaction
+      const quotationNumber = await this.repository.generateNextQuotationNumber();
+
+      const createdQuotation = await db.transaction(async (tx) => {
+        const [insertedHeader] = await tx
+          .insert(quotations)
+          .values({
+            quotationNumber,
+            customerId: data.customerId,
+            priceListId: data.priceListId,
+            status: QuotationStatuses.DRAFT,
+            currency: targetCurrency,
+            subtotal: subtotalNum.toFixed(2),
+            discountAmount: discountAmountNum.toFixed(2),
+            totalAmount: totalAmountNum.toFixed(2),
+            issueDate: data.issueDate,
+            expiryDate: data.expiryDate,
+            notes: data.notes?.trim() || null,
+            createdBy: user.userId,
+          })
+          .returning();
+
+        // Batch insert items in single query
+        await tx.insert(quotationItems).values(
+          resolvedItems.map((item) => ({
+            ...item,
+            quotationId: insertedHeader.id,
+          }))
+        );
+
+        return insertedHeader;
+      });
+
+      // If user requested immediate approval submission
+      if (data.submitForApproval) {
+        await this.approvalRoutingService.submitQuotation(
+          createdQuotation.id,
+          user.userId,
+          user.roles[0] || Roles.SALES_REP,
+          data.submitNotes
+        );
+        const refreshed = await this.repository.findById(createdQuotation.id);
+        if (refreshed) return refreshed;
+      }
+
+      return createdQuotation;
+    }
+
+    // 4. Default single-header creation (when items are not passed in payload)
     const quotationNumber = await this.repository.generateNextQuotationNumber();
 
     return this.repository.create({
@@ -110,7 +221,7 @@ export class QuotationsService {
       customerId: data.customerId,
       priceListId: data.priceListId,
       status: QuotationStatuses.DRAFT,
-      currency: data.currency ? data.currency.trim().toUpperCase() : priceList.currency,
+      currency: targetCurrency,
       subtotal: '0.00',
       discountAmount: '0.00',
       totalAmount: '0.00',

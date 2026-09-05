@@ -1,6 +1,5 @@
 import { UserRole } from '@/types/Auth';
 import { normalizeRole, ROLES } from '@/lib/accessControl';
-
 const roleLabels: Record<string, string> = {
   [ROLES.ADMIN]: 'Administrator',
   [ROLES.SALES_REP]: 'Sales Representative',
@@ -30,3 +29,5 @@ export function RoleBadge({ role, className = '' }: { role: UserRole | string; c
     </span>
   );
 }
+
+export default RoleBadge;

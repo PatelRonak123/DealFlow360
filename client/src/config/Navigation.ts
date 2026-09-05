@@ -16,6 +16,7 @@ import {
   LucideIcon,
   PlusCircle,
   Truck,
+  User,
 } from 'lucide-react';
 import { UserRole } from '@/types/Auth';
 import { normalizeRole, ROLES } from '@/lib/accessControl';
@@ -44,7 +45,7 @@ export const navigationConfig: NavSection[] = [
       { label: 'Dashboard', to: '/customer/dashboard', icon: LayoutGrid, roles: [ROLES.CUSTOMER] },
 
       // Sales Operations
-      { label: 'Create Quote', to: '/quotations/new', icon: PlusCircle, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER] },
+      { label: 'Create Quote', to: '/quotations/new', icon: PlusCircle, roles: [ROLES.SALES_MANAGER] },
       { label: 'Quotations', to: '/quotations', icon: FileText, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN] },
       { label: 'Pipeline & Deals', to: '/pipeline', icon: Kanban, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER] },
       { label: 'Customer Accounts', to: '/customers', icon: Users, roles: [ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN] },
@@ -64,6 +65,7 @@ export const navigationConfig: NavSection[] = [
       { label: 'Orders', to: '/customer/orders', icon: Truck, roles: [ROLES.CUSTOMER] },
       { label: 'Invoices', to: '/customer/invoices', icon: Receipt, roles: [ROLES.CUSTOMER] },
       { label: 'Payments', to: '/customer/payments', icon: CreditCard, roles: [ROLES.CUSTOMER] },
+      { label: 'Profile', to: '/customer/profile', icon: User, roles: [ROLES.CUSTOMER] },
 
       // Admin Management
       { label: 'User Management', to: '/admin/users', icon: ShieldCheck, roles: [ROLES.ADMIN] },

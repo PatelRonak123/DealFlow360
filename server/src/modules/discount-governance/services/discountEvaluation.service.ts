@@ -214,15 +214,24 @@ export class DiscountEvaluationService {
     let approvalRoute: ApprovalRoute = ApprovalRoutes.NO_APPROVAL;
     const requiredApprovalLevels: ApprovalLevel[] = [];
 
-    if (riskResult.riskScore === 0) {
+    const quotationSubtotal = Number(quotation.subtotal);
+    const quotationDiscount = Number(quotation.discountAmount);
+    const overallDiscountPercent = quotationSubtotal > 0
+      ? (quotationDiscount / quotationSubtotal) * 100
+      : 0;
+
+    // Determine governing metric: higher of line-item excess risk or aggregate quotation discount
+    const evaluationMetric = Math.max(overallDiscountPercent, riskResult.riskScore);
+
+    if (evaluationMetric <= GovernanceThresholds.AUTO_APPROVAL_THRESHOLD) {
+      // <= 10%: automatically approved
       approvalRoute = ApprovalRoutes.NO_APPROVAL;
-    } else if (
-      riskResult.riskScore > 0 &&
-      riskResult.riskScore <= GovernanceThresholds.MANAGER_APPROVAL_THRESHOLD
-    ) {
+    } else if (evaluationMetric <= GovernanceThresholds.MANAGER_APPROVAL_THRESHOLD) {
+      // 11% - 20%: Sales Manager approval required
       approvalRoute = ApprovalRoutes.MANAGER;
       requiredApprovalLevels.push(ApprovalLevels.MANAGER);
     } else {
+      // > 20%: Finance Operations approval required
       approvalRoute = ApprovalRoutes.MANAGER_AND_FINANCE;
       requiredApprovalLevels.push(ApprovalLevels.MANAGER, ApprovalLevels.FINANCE);
     }
