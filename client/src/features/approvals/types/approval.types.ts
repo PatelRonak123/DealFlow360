@@ -26,6 +26,23 @@ export interface PendingApprovalItem {
     currency: string;
     customerId: string;
     createdById: string;
+    versionNumber?: number;
+    isRevision?: boolean;
+    parentQuotationId?: string | null;
+    revisionReason?: string | null;
+    parentQuotation?: {
+      id: string;
+      quotationNumber: string;
+      subtotal: string;
+      discountAmount: string;
+      totalAmount: string;
+    };
+    negotiation?: {
+      id: string;
+      requestedDiscountPercent: number;
+      customerMessage?: string;
+      requestedChanges?: string[];
+    };
     customer?: {
       id: string;
       companyName: string;

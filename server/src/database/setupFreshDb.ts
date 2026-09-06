@@ -234,6 +234,11 @@ export async function setupFreshDatabase(): Promise<void> {
         issue_date date NOT NULL,
         expiry_date date NOT NULL,
         notes text,
+        parent_quotation_id uuid REFERENCES quotations(id) ON DELETE SET NULL,
+        version_number integer DEFAULT 1 NOT NULL,
+        is_customer_visible boolean DEFAULT false NOT NULL,
+        revision_reason text,
+        negotiation_id uuid,
         created_by uuid NOT NULL REFERENCES users(id),
         created_at timestamp with time zone DEFAULT now() NOT NULL,
         updated_at timestamp with time zone DEFAULT now() NOT NULL
@@ -241,6 +246,7 @@ export async function setupFreshDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_quotations_customer_id ON quotations(customer_id);
       CREATE INDEX IF NOT EXISTS idx_quotations_created_by ON quotations(created_by);
       CREATE INDEX IF NOT EXISTS idx_quotations_status ON quotations(status);
+      CREATE INDEX IF NOT EXISTS idx_quotations_parent_id ON quotations(parent_quotation_id);
 
       -- 16. Quotation Items Table
       CREATE TABLE IF NOT EXISTS quotation_items (
@@ -278,7 +284,28 @@ export async function setupFreshDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_quotation_approvals_quotation_id ON quotation_approvals(quotation_id);
       CREATE INDEX IF NOT EXISTS idx_quotation_approvals_status ON quotation_approvals(status);
 
-      -- 18. Quotation Discount Evaluations Table
+      -- 18. Quotation Negotiations Table
+      CREATE TABLE IF NOT EXISTS quotation_negotiations (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        quotation_id uuid NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+        quotation_version_id uuid REFERENCES quotations(id) ON DELETE SET NULL,
+        customer_id uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        requested_discount_percent numeric(5, 2) NOT NULL,
+        requested_changes text,
+        customer_message text,
+        status varchar(50) DEFAULT 'REQUESTED' NOT NULL,
+        rep_response text,
+        revised_quotation_id uuid REFERENCES quotations(id) ON DELETE SET NULL,
+        handled_by uuid REFERENCES users(id) ON DELETE SET NULL,
+        handled_at timestamp with time zone,
+        created_at timestamp with time zone DEFAULT now() NOT NULL,
+        updated_at timestamp with time zone DEFAULT now() NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_quotation_negotiations_quotation_id ON quotation_negotiations(quotation_id);
+      CREATE INDEX IF NOT EXISTS idx_quotation_negotiations_customer_id ON quotation_negotiations(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_quotation_negotiations_status ON quotation_negotiations(status);
+
+      -- 19. Quotation Discount Evaluations Table
       CREATE TABLE IF NOT EXISTS quotation_discount_evaluations (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         quotation_id uuid NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,

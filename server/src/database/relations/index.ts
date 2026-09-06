@@ -16,6 +16,7 @@ import { categoryDiscountRules } from '../schema/categoryDiscountRules.js';
 import { quotations } from '../schema/quotations.js';
 import { quotationItems } from '../schema/quotationItems.js';
 import { quotationApprovals } from '../schema/quotationApprovals.js';
+import { quotationNegotiations } from '../schema/quotationNegotiations.js';
 import { quotationDiscountEvaluations } from '../schema/quotationDiscountEvaluations.js';
 import { recommendationRules } from '../schema/recommendationRules.js';
 import { recommendationEvents } from '../schema/recommendationEvents.js';
@@ -174,6 +175,33 @@ export const quotationsRelations = relations(quotations, ({ one, many }) => ({
   recommendationEvents: many(recommendationEvents),
   fulfillments: many(fulfillments),
   invoices: many(invoices),
+  parentQuotation: one(quotations, {
+    fields: [quotations.parentQuotationId],
+    references: [quotations.id],
+    relationName: 'quotation_revisions',
+  }),
+  revisions: many(quotations, {
+    relationName: 'quotation_revisions',
+  }),
+  negotiation: one(quotationNegotiations, {
+    fields: [quotations.negotiationId],
+    references: [quotationNegotiations.id],
+  }),
+}));
+
+export const quotationNegotiationsRelations = relations(quotationNegotiations, ({ one }) => ({
+  quotation: one(quotations, {
+    fields: [quotationNegotiations.quotationId],
+    references: [quotations.id],
+  }),
+  customer: one(customers, {
+    fields: [quotationNegotiations.customerId],
+    references: [customers.id],
+  }),
+  handledByUser: one(users, {
+    fields: [quotationNegotiations.handledBy],
+    references: [users.id],
+  }),
 }));
 
 export const quotationItemsRelations = relations(quotationItems, ({ one, many }) => ({

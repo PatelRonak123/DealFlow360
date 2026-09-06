@@ -28,6 +28,8 @@ export interface QuotationWithDetails extends Quotation {
   priceList?: PriceList;
   createdByUser?: Pick<User, 'id' | 'name' | 'email'>;
   items?: QuotationItemWithProduct[];
+  parentQuotation?: Quotation;
+  negotiation?: any;
 }
 
 export interface PaginatedQuotations {
@@ -224,6 +226,8 @@ export class QuotationsRepository {
           },
           orderBy: (items, { asc }) => [asc(items.createdAt)],
         },
+        parentQuotation: true,
+        negotiation: true,
       },
     });
 

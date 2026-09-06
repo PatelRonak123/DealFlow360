@@ -15,6 +15,10 @@ import {
   CheckCircle,
   Clock3,
   Boxes,
+  GitBranch,
+  RefreshCw,
+  Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 
 export const QuotationDetailsPage: React.FC = () => {
@@ -65,11 +69,16 @@ export const QuotationDetailsPage: React.FC = () => {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight text-[#17213a]">
                 Quotation {quotation.quotationNumber}
               </h1>
               <StatusBadge status={quotation.status} size="lg" />
+              {quotation.versionNumber && quotation.versionNumber > 1 && (
+                <span className="inline-flex items-center gap-1 rounded-xl bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 border border-blue-200">
+                  <GitBranch className="h-3.5 w-3.5" /> V{quotation.versionNumber} Approved Revision
+                </span>
+              )}
             </div>
             <p className="text-xs text-[#8491aa] mt-0.5">
               Issued on {new Date(quotation.issueDate).toLocaleDateString()} • Valid until{' '}
@@ -115,6 +124,57 @@ export const QuotationDetailsPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Revision State Notice */}
+      {quotation.versionNumber && quotation.versionNumber > 1 && !isConfirmed && (
+        <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50/90 p-4 text-xs font-medium text-blue-900 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-blue-600 shrink-0" />
+            <div>
+              <span className="font-bold text-sm block text-blue-950">
+                Approved Revised Quotation (Version {quotation.versionNumber})
+              </span>
+              <span className="text-blue-800">
+                Negotiated terms and updated discounts have been approved by sales management and applied to this proposal.
+                {quotation.revisionReason && ` Rationale: "${quotation.revisionReason}"`}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Negotiation State Notice: Under Review */}
+      {quotation.activeNegotiation && (quotation.activeNegotiation.status === 'REQUESTED' || quotation.activeNegotiation.status === 'UNDER_REVIEW') && (
+        <div className="flex items-center justify-between rounded-2xl border border-indigo-200 bg-indigo-50/90 p-4 text-xs font-medium text-indigo-900 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <RefreshCw className="h-5 w-5 text-indigo-600 shrink-0 animate-spin-slow" />
+            <div>
+              <span className="font-bold text-sm block text-indigo-950">Negotiation Under Review</span>
+              <span className="text-indigo-800">
+                Your sales representative is reviewing your request for <strong>{quotation.activeNegotiation.requestedDiscountPercent}% discount</strong>.
+                {quotation.activeNegotiation.customerMessage && ` Your note: "${quotation.activeNegotiation.customerMessage}".`}
+                {' '}The existing proposal remains active and valid.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Negotiation State Notice: Declined */}
+      {quotation.activeNegotiation && quotation.activeNegotiation.status === 'DECLINED' && (
+        <div className="flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50/90 p-4 text-xs font-medium text-amber-900 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+            <div>
+              <span className="font-bold text-sm block text-amber-950">Negotiation Request Declined</span>
+              <span className="text-amber-800">
+                Your sales representative reviewed your request: &ldquo;{quotation.activeNegotiation.repResponse || 'Our current pricing represents the most competitive commercial rate available'}&rdquo;.
+                The original proposal remains valid and ready for confirmation.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation State Notice */}
       {isConfirmed && (

@@ -3,6 +3,7 @@ import {
   quotationApprovals,
   quotationDiscountEvaluations,
   quotations,
+  quotationNegotiations,
   customers,
   users,
   QuotationApproval,
@@ -10,8 +11,9 @@ import {
   QuotationDiscountEvaluation,
   NewQuotationDiscountEvaluation,
 } from '../../../database/schema/index.js';
-import { eq, and, desc, inArray, count } from 'drizzle-orm';
+import { eq, and, or, desc, inArray, count } from 'drizzle-orm';
 import { ApprovalStatuses } from '../constants/approvalStatus.js';
+import { QuotationStatuses } from '../../quotations/constants/quotationStatus.js';
 
 export interface PendingApprovalListItem extends QuotationApproval {
   quotation?: {
@@ -26,6 +28,23 @@ export interface PendingApprovalListItem extends QuotationApproval {
     currency: string;
     customerId: string;
     createdById: string;
+    versionNumber?: number;
+    parentQuotationId?: string | null;
+    revisionReason?: string | null;
+    isRevision?: boolean;
+    parentQuotation?: {
+      id: string;
+      quotationNumber: string;
+      subtotal: string;
+      discountAmount: string;
+      totalAmount: string;
+    };
+    negotiation?: {
+      id: string;
+      requestedDiscountPercent: number;
+      customerMessage?: string;
+      requestedChanges?: string[];
+    };
     customer?: {
       id: string;
       companyName: string;
@@ -150,15 +169,20 @@ export class DiscountGovernanceRepository {
 
   async invalidatePendingApprovalsByQuotationId(
     quotationId: string,
-    trx?: DbClient
+    trx?: DbClient,
+    comments?: string
   ): Promise<void> {
     const client = trx || this.db;
+    const updatePayload: Record<string, any> = {
+      status: ApprovalStatuses.INVALIDATED,
+      updatedAt: new Date(),
+    };
+    if (comments) {
+      updatePayload.comments = comments;
+    }
     await client
       .update(quotationApprovals)
-      .set({
-        status: ApprovalStatuses.INVALIDATED,
-        updatedAt: new Date(),
-      })
+      .set(updatePayload)
       .where(
         and(
           eq(quotationApprovals.quotationId, quotationId),
@@ -166,6 +190,101 @@ export class DiscountGovernanceRepository {
         )
       );
     this.invalidateCache();
+  }
+
+  /**
+   * Automatically discovers any quotations with PENDING_APPROVAL, PENDING_MANAGER_APPROVAL,
+   * or PENDING_FINANCE_APPROVAL status that lack an active pending approval record in
+   * quotation_approvals (e.g. counter-offers from customer portal or direct submissions),
+   * and creates the corresponding approval steps so they appear in governance queues.
+   */
+  async syncOrphanedPendingQuotations(): Promise<void> {
+    try {
+      const pendingQuotes = await this.db
+        .select({
+          id: quotations.id,
+          quotationNumber: quotations.quotationNumber,
+          status: quotations.status,
+          subtotal: quotations.subtotal,
+          discountAmount: quotations.discountAmount,
+          notes: quotations.notes,
+        })
+        .from(quotations)
+        .where(
+          or(
+            eq(quotations.status, QuotationStatuses.PENDING_APPROVAL),
+            eq(quotations.status, QuotationStatuses.PENDING_MANAGER_APPROVAL),
+            eq(quotations.status, QuotationStatuses.PENDING_FINANCE_APPROVAL)
+          )
+        );
+
+      if (pendingQuotes.length === 0) return;
+
+      const activeApprovals = await this.db
+        .select({ quotationId: quotationApprovals.quotationId })
+        .from(quotationApprovals)
+        .where(eq(quotationApprovals.status, ApprovalStatuses.PENDING));
+
+      const activeQuoteIds = new Set(activeApprovals.map((a) => a.quotationId));
+      const orphanedQuotes = pendingQuotes.filter((q) => !activeQuoteIds.has(q.id));
+
+      if (orphanedQuotes.length === 0) return;
+
+      const newApprovals: NewQuotationApproval[] = [];
+
+      for (const q of orphanedQuotes) {
+        const subtotalNum = parseFloat(q.subtotal) || 0;
+        const discountAmountNum = parseFloat(q.discountAmount) || 0;
+        const discountPercent = subtotalNum > 0 ? (discountAmountNum / subtotalNum) * 100 : 0;
+
+        if (q.status === QuotationStatuses.PENDING_FINANCE_APPROVAL) {
+          newApprovals.push({
+            quotationId: q.id,
+            approvalLevel: 'FINANCE',
+            status: ApprovalStatuses.PENDING,
+            sequence: 2,
+            comments: q.notes || 'Quotation discount pending Finance review.',
+            requestedAt: new Date(),
+          });
+        } else if (discountPercent > 20) {
+          // Tier 1 Manager + Tier 2 Finance
+          newApprovals.push(
+            {
+              quotationId: q.id,
+              approvalLevel: 'MANAGER',
+              status: ApprovalStatuses.PENDING,
+              sequence: 1,
+              comments: q.notes || `Discount requested (${discountPercent.toFixed(1)}% > 20% limit) - Requires Sales Manager & Finance approval.`,
+              requestedAt: new Date(),
+            },
+            {
+              quotationId: q.id,
+              approvalLevel: 'FINANCE',
+              status: ApprovalStatuses.PENDING,
+              sequence: 2,
+              comments: 'Tier 2 Financial Margin & Profitability Review Required (>20%).',
+              requestedAt: new Date(),
+            }
+          );
+        } else {
+          // Standard Manager approval
+          newApprovals.push({
+            quotationId: q.id,
+            approvalLevel: 'MANAGER',
+            status: ApprovalStatuses.PENDING,
+            sequence: 1,
+            comments: q.notes || `Discount requested (${discountPercent.toFixed(1)}%).`,
+            requestedAt: new Date(),
+          });
+        }
+      }
+
+      if (newApprovals.length > 0) {
+        await this.db.insert(quotationApprovals).values(newApprovals);
+      }
+    } catch (err) {
+      console.error('[DiscountGovernanceRepository] Failed to sync orphaned pending quotations:', err);
+    }
   }
 
   async listPendingApprovals(filters: {
@@ -186,6 +305,9 @@ export class DiscountGovernanceRepository {
 
     const fetchPromise = (async () => {
       try {
+        // Ensure all quotations in pending state have corresponding pending approvals
+        await this.syncOrphanedPendingQuotations();
+
         const offset = (filters.page - 1) * filters.limit;
         const conditions = [];
 
@@ -197,12 +319,52 @@ export class DiscountGovernanceRepository {
           conditions.push(inArray(quotationApprovals.approvalLevel, filters.allowedLevels));
         }
 
+        // Sequential multi-layer visibility constraint:
+        // 1. Manager-level queue only sees quotations currently in PENDING_APPROVAL or PENDING_MANAGER_APPROVAL.
+        // 2. Finance-level queue only sees quotations in PENDING_FINANCE_APPROVAL (Stage 1 Manager must be approved first).
+        // If Manager rejects at Stage 1, quotation is REJECTED and Finance will never see it.
+        if (!filters.status || filters.status === ApprovalStatuses.PENDING) {
+          if (filters.allowedLevels && filters.allowedLevels.length === 1) {
+            const level = filters.allowedLevels[0];
+            if (level === 'MANAGER') {
+              conditions.push(
+                or(
+                  eq(quotations.status, QuotationStatuses.PENDING_APPROVAL),
+                  eq(quotations.status, QuotationStatuses.PENDING_MANAGER_APPROVAL)
+                )
+              );
+            } else if (level === 'FINANCE') {
+              conditions.push(
+                eq(quotations.status, QuotationStatuses.PENDING_FINANCE_APPROVAL)
+              );
+            }
+          } else {
+            // Multi-level / Admin queue
+            conditions.push(
+              or(
+                and(
+                  eq(quotationApprovals.approvalLevel, 'MANAGER'),
+                  or(
+                    eq(quotations.status, QuotationStatuses.PENDING_APPROVAL),
+                    eq(quotations.status, QuotationStatuses.PENDING_MANAGER_APPROVAL)
+                  )
+                ),
+                and(
+                  eq(quotationApprovals.approvalLevel, 'FINANCE'),
+                  eq(quotations.status, QuotationStatuses.PENDING_FINANCE_APPROVAL)
+                )
+              )
+            );
+          }
+        }
+
         const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
         // Run Count query and Rows query in parallel to eliminate sequential network round trips
         const countQuery = this.db
           .select({ total: count() })
           .from(quotationApprovals)
+          .innerJoin(quotations, eq(quotationApprovals.quotationId, quotations.id))
           .where(whereClause);
 
         const rowsQuery = this.db
@@ -225,44 +387,89 @@ export class DiscountGovernanceRepository {
 
         const total = countResult ? Number(countResult.total) : 0;
 
-        const items: PendingApprovalListItem[] = rows.map((row) => {
-          const subtotalNum = Number(row.quotation.subtotal) || 0;
-          const discountAmountNum = Number(row.quotation.discountAmount) || 0;
-          const discountPercent = subtotalNum > 0
-            ? ((discountAmountNum / subtotalNum) * 100).toFixed(1)
-            : '0.0';
+        const items: PendingApprovalListItem[] = await Promise.all(
+          rows.map(async (row) => {
+            const subtotalNum = Number(row.quotation.subtotal) || 0;
+            const discountAmountNum = Number(row.quotation.discountAmount) || 0;
+            const discountPercent = subtotalNum > 0
+              ? ((discountAmountNum / subtotalNum) * 100).toFixed(1)
+              : '0.0';
 
-          return {
-            ...row.approval,
-            quotation: {
-              id: row.quotation.id,
-              quotationNumber: row.quotation.quotationNumber,
-              subtotal: row.quotation.subtotal,
-              discountAmount: row.quotation.discountAmount,
-              totalAmount: row.quotation.totalAmount,
-              discountPercent,
-              status: row.quotation.status,
-              notes: row.quotation.notes,
-              currency: row.quotation.currency,
-              customerId: row.quotation.customerId,
-              createdById: row.quotation.createdBy,
-              customer: row.customer
-                ? {
-                    id: row.customer.id,
-                    companyName: row.customer.companyName,
-                    email: row.customer.email,
-                  }
-                : undefined,
-              createdBy: row.createdBy
-                ? {
-                    id: row.createdBy.id,
-                    name: row.createdBy.name,
-                    email: row.createdBy.email,
-                  }
-                : undefined,
-            },
-          };
-        });
+            let parentQuotation = undefined;
+            if (row.quotation.parentQuotationId) {
+              const p = await this.db.query.quotations.findFirst({
+                where: eq(quotations.id, row.quotation.parentQuotationId),
+              });
+              if (p) {
+                parentQuotation = {
+                  id: p.id,
+                  quotationNumber: p.quotationNumber,
+                  subtotal: p.subtotal,
+                  discountAmount: p.discountAmount,
+                  totalAmount: p.totalAmount,
+                };
+              }
+            }
+
+            let negotiation = undefined;
+            if (row.quotation.negotiationId) {
+              const n = await this.db.query.quotationNegotiations.findFirst({
+                where: eq(quotationNegotiations.id, row.quotation.negotiationId),
+              });
+              if (n) {
+                let changes: string[] = [];
+                try {
+                  if (n.requestedChanges) changes = JSON.parse(n.requestedChanges);
+                } catch {
+                  changes = [n.requestedChanges || ''];
+                }
+                negotiation = {
+                  id: n.id,
+                  requestedDiscountPercent: parseFloat(String(n.requestedDiscountPercent || '0')),
+                  customerMessage: n.customerMessage || undefined,
+                  requestedChanges: changes,
+                };
+              }
+            }
+
+            return {
+              ...row.approval,
+              quotation: {
+                id: row.quotation.id,
+                quotationNumber: row.quotation.quotationNumber,
+                subtotal: row.quotation.subtotal,
+                discountAmount: row.quotation.discountAmount,
+                totalAmount: row.quotation.totalAmount,
+                discountPercent,
+                status: row.quotation.status,
+                notes: row.quotation.notes,
+                currency: row.quotation.currency,
+                customerId: row.quotation.customerId,
+                createdById: row.quotation.createdBy,
+                versionNumber: row.quotation.versionNumber || 1,
+                parentQuotationId: row.quotation.parentQuotationId || undefined,
+                revisionReason: row.quotation.revisionReason || undefined,
+                isRevision: !!row.quotation.parentQuotationId,
+                parentQuotation,
+                negotiation,
+                customer: row.customer
+                  ? {
+                      id: row.customer.id,
+                      companyName: row.customer.companyName,
+                      email: row.customer.email,
+                    }
+                  : undefined,
+                createdBy: row.createdBy
+                  ? {
+                      id: row.createdBy.id,
+                      name: row.createdBy.name,
+                      email: row.createdBy.email,
+                    }
+                  : undefined,
+              },
+            };
+          })
+        );
 
         const result = { items, total };
         pendingApprovalsCache.set(cacheKey, {

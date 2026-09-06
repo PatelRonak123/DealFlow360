@@ -15,6 +15,10 @@ import {
   Copy,
   ThumbsUp,
   ThumbsDown,
+  Eye,
+  EyeOff,
+  Handshake,
+  GitBranch,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -300,18 +304,44 @@ export const QuoteDetailPage: React.FC = () => {
             All Quotes
           </Button>
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="text-2xl font-bold tracking-tight text-[#17213a]">
                 {quote.quotationNumber}
               </h1>
               <Badge variant={statusVariantMap[quote.status] || 'default'}>
                 {statusLabelMap[quote.status] || quote.status}
               </Badge>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                <GitBranch className="h-3 w-3" /> V{quote.versionNumber || 1}
+              </span>
+              {quote.isCustomerVisible ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <Eye className="h-3 w-3" /> Customer-Visible
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                  <EyeOff className="h-3 w-3" /> Internal Revision (Hidden from Customer)
+                </span>
+              )}
             </div>
-            <p className="mt-0.5 text-xs text-[#59657d]">
-              Customer: <strong>{quote.customer?.companyName || 'N/A'}</strong> • Created on{' '}
-              {formatDate(quote.createdAt)}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-[#59657d]">
+              <span>
+                Customer: <strong>{quote.customer?.companyName || 'N/A'}</strong> • Created on{' '}
+                {formatDate(quote.createdAt)}
+              </span>
+              {quote.parentQuotationId && (
+                <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[11px] font-medium border border-blue-200">
+                  Revised from parent:
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/quotations/${quote.parentQuotationId}`)}
+                    className="underline hover:text-blue-900 font-semibold"
+                  >
+                    {quote.parentQuotation?.quotationNumber || 'Original Proposal'}
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -408,6 +438,51 @@ export const QuoteDetailPage: React.FC = () => {
       </div>
 
       {/* Contextual Status Alerts & Action Banners */}
+      {(quote.negotiation || quote.revisionReason) && (
+        <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/90 to-blue-50/90 p-4 text-xs text-indigo-950 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700 mt-0.5">
+                <Handshake className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-sm text-indigo-950">Linked to Customer Negotiation</h4>
+                  {quote.negotiation?.status && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200 font-mono text-[10px] font-bold">
+                      {quote.negotiation.status}
+                    </span>
+                  )}
+                </div>
+                {quote.negotiation && (
+                  <p className="text-indigo-900 leading-relaxed">
+                    Customer requested <strong>{quote.negotiation.requestedDiscountPercent}% target discount</strong>.
+                    {quote.negotiation.customerMessage && (
+                      <span className="italic block mt-1 bg-white/70 p-2 rounded border border-indigo-100 text-indigo-800">
+                        &ldquo;{quote.negotiation.customerMessage}&rdquo;
+                      </span>
+                    )}
+                  </p>
+                )}
+                {quote.revisionReason && (
+                  <p className="text-[#59657d] pt-1">
+                    <strong>Sales Representative Revision Rationale:</strong> {quote.revisionReason}
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white hover:bg-indigo-50 border-indigo-200 text-indigo-700 shrink-0 self-start"
+              onClick={() => navigate('/negotiations')}
+            >
+              View Negotiation Queue
+            </Button>
+          </div>
+        </div>
+      )}
+
       {quote.status === 'NEGOTIATION' && (
         <div className="rounded-xl border border-blue-200 bg-blue-50/90 p-4 text-xs text-blue-900 flex items-start justify-between gap-4 shadow-2xs">
           <div className="flex items-start gap-3">

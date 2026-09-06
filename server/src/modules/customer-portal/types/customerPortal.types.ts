@@ -87,6 +87,18 @@ export interface CustomerQuotationDetail {
     overallStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NOT_REQUIRED';
     steps: ApprovalStep[];
   };
+  versionNumber?: number;
+  isCustomerVisible?: boolean;
+  revisionReason?: string;
+  parentQuotationId?: string;
+  activeNegotiation?: {
+    id: string;
+    status: string;
+    requestedDiscountPercent: number;
+    customerMessage?: string;
+    repResponse?: string;
+    createdAt: string;
+  };
   orderId?: string;
   orderNumber?: string;
 }
