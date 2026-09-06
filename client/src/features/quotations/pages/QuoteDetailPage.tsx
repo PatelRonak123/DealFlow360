@@ -85,11 +85,14 @@ export const QuoteDetailPage: React.FC = () => {
   const [itemDiscount, setItemDiscount] = useState(0);
   const [addItemError, setAddItemError] = useState<string | null>(null);
 
-  const { data: productData, isLoading: isProductsLoading } = useProducts({
-    search: debouncedProductSearch.trim() || undefined,
-    limit: 15,
-    isActive: true,
-  });
+  const { data: productData, isLoading: isProductsLoading } = useProducts(
+    {
+      search: debouncedProductSearch.trim() || undefined,
+      limit: 15,
+      isActive: true,
+    },
+    { enabled: isAddItemModalOpen }
+  );
   const products = productData?.items || [];
 
   const statusVariantMap: Record<
