@@ -6,7 +6,7 @@ import {
   NewCustomer,
   CustomerTier,
 } from '../../../database/schema/index.js';
-import { eq, ilike, and, or, desc, count } from 'drizzle-orm';
+import { eq, ilike, and, or, desc, count, sql } from 'drizzle-orm';
 import { CustomerQueryInput } from '../validators/customer.validator.js';
 
 export interface CustomerWithTier extends Customer {
@@ -21,67 +21,112 @@ export interface PaginatedCustomers {
   totalPages: number;
 }
 
+interface CachedCustomers {
+  data: PaginatedCustomers;
+  expiresAt: number;
+}
+
+const customersCache = new Map<string, CachedCustomers>();
+const inFlightCustomers = new Map<string, Promise<PaginatedCustomers>>();
+const CUSTOMERS_CACHE_TTL_MS = 60 * 1000; // 60 seconds fast cache
+
 export class CustomersRepository {
+  invalidateCache(): void {
+    customersCache.clear();
+  }
+
   async findAll(
     query: CustomerQueryInput,
     client: Database = db
   ): Promise<PaginatedCustomers> {
-    const { page = 1, limit = 20, search, customerTierId, status } = query;
-    const offset = (page - 1) * limit;
-
-    const conditions = [];
-
-    if (search) {
-      conditions.push(
-        or(
-          ilike(customers.companyName, `%${search}%`),
-          ilike(customers.contactName, `%${search}%`),
-          ilike(customers.email, `%${search}%`)
-        )
-      );
+    const cacheKey = JSON.stringify(query);
+    const cached = customersCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
     }
 
-    if (customerTierId) {
-      conditions.push(eq(customers.customerTierId, customerTierId));
+    if (inFlightCustomers.has(cacheKey)) {
+      return inFlightCustomers.get(cacheKey)!;
     }
 
-    if (status) {
-      conditions.push(eq(customers.status, status));
-    }
+    const fetchPromise = (async (): Promise<PaginatedCustomers> => {
+      try {
+        const { page = 1, limit = 20, search, customerTierId, status } = query;
+        const offset = (page - 1) * limit;
 
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+        const conditions = [];
 
-    const [totalResult] = await client
-      .select({ count: count() })
-      .from(customers)
-      .where(whereClause);
+        if (search) {
+          conditions.push(
+            or(
+              ilike(customers.companyName, `%${search}%`),
+              ilike(customers.contactName, `%${search}%`),
+              ilike(customers.email, `%${search}%`)
+            )
+          );
+        }
 
-    const total = Number(totalResult?.count || 0);
+        if (customerTierId) {
+          conditions.push(eq(customers.customerTierId, customerTierId));
+        }
 
-    const rows = await client
-      .select({
-        customer: customers,
-        tier: customerTiers,
-      })
-      .from(customers)
-      .leftJoin(customerTiers, eq(customers.customerTierId, customerTiers.id))
-      .where(whereClause)
-      .orderBy(desc(customers.createdAt))
-      .limit(limit)
-      .offset(offset);
+        if (status) {
+          conditions.push(eq(customers.status, status));
+        }
 
-    const items: CustomerWithTier[] = rows.map((r) => ({
-      ...r.customer,
-      customerTier: r.tier || undefined,
-    }));
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit) || 1,
-    };
+        // Single-pass query with window count
+        const rows = await client
+          .select({
+            customer: customers,
+            tier: customerTiers,
+            fullCount: sql<string>`count(*) over()`,
+          })
+          .from(customers)
+          .leftJoin(customerTiers, eq(customers.customerTierId, customerTiers.id))
+          .where(whereClause)
+          .orderBy(desc(customers.createdAt))
+          .limit(limit)
+          .offset(offset);
+
+        let total = 0;
+        if (rows.length > 0) {
+          total = Number(rows[0].fullCount || 0);
+        } else if (page > 1) {
+          const [totalResult] = await client
+            .select({ count: count() })
+            .from(customers)
+            .where(whereClause);
+          total = Number(totalResult?.count || 0);
+        }
+
+        const items: CustomerWithTier[] = rows.map((r) => ({
+          ...r.customer,
+          customerTier: r.tier || undefined,
+        }));
+
+        const result: PaginatedCustomers = {
+          items,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+        };
+
+        customersCache.set(cacheKey, {
+          data: result,
+          expiresAt: Date.now() + CUSTOMERS_CACHE_TTL_MS,
+        });
+
+        return result;
+      } finally {
+        inFlightCustomers.delete(cacheKey);
+      }
+    })();
+
+    inFlightCustomers.set(cacheKey, fetchPromise);
+    return fetchPromise;
   }
 
   async findById(id: string, client: Database = db): Promise<CustomerWithTier | undefined> {
@@ -97,6 +142,7 @@ export class CustomersRepository {
 
   async create(data: NewCustomer, client: Database = db): Promise<Customer> {
     const [created] = await client.insert(customers).values(data).returning();
+    this.invalidateCache();
     return created;
   }
 
@@ -114,6 +160,7 @@ export class CustomersRepository {
       .where(eq(customers.id, id))
       .returning();
 
+    this.invalidateCache();
     return updated;
   }
 
@@ -127,6 +174,7 @@ export class CustomersRepository {
       .where(eq(customers.id, id))
       .returning();
 
+    this.invalidateCache();
     return !!updated;
   }
 }

@@ -13,13 +13,38 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/features/auth';
-import { useFinanceDashboard } from '../hooks/useFinance';
-import { formatINR } from '@/utils/formatters';
+import { useFinanceDashboard, useGenerateInvoiceMutation } from '../hooks/useFinance';
+import { formatINR, formatDate } from '@/utils/formatters';
 
 export const FinanceDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data, isLoading, refetch } = useFinanceDashboard();
+  const generateInvoiceMutation = useGenerateInvoiceMutation();
+  const [generatingQuoteId, setGeneratingQuoteId] = React.useState<string | null>(null);
+  const [dashboardMessage, setDashboardMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleGenerateInvoiceFromDashboard = async (quotationId: string, quotationNumber: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setGeneratingQuoteId(quotationId);
+    setDashboardMessage(null);
+    try {
+      const created = await generateInvoiceMutation.mutateAsync(quotationId);
+      setDashboardMessage({
+        type: 'success',
+        text: `Tax Invoice ${created.invoiceNumber} generated for ${quotationNumber}! Redirecting...`,
+      });
+      setTimeout(() => {
+        navigate(`/finance/invoices/${created.id}`);
+      }, 1200);
+    } catch (err: any) {
+      setDashboardMessage({
+        type: 'error',
+        text: err.response?.data?.message || err.message || 'Failed to generate invoice.',
+      });
+      setGeneratingQuoteId(null);
+    }
+  };
 
   const overview = data?.overview || {
     pendingFinanceApprovals: 0,
@@ -280,6 +305,109 @@ export const FinanceDashboardPage: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Dashboard Action Message Banner */}
+      {dashboardMessage && (
+        <div
+          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm animate-in fade-in slide-in-from-top-2 ${
+            dashboardMessage.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-red-200 bg-red-50 text-red-800'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Receipt className="h-4 w-4" />
+            <span className="font-semibold text-xs">{dashboardMessage.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDashboardMessage(null)}
+            className="text-xs font-bold hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Approved Quotations Awaiting Invoicing Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <CardTitle>Approved Quotations Ready for Invoicing</CardTitle>
+              {data?.approvedQuotationsAwaitingInvoice && data.approvedQuotationsAwaitingInvoice.length > 0 && (
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  {data.approvedQuotationsAwaitingInvoice.length} Ready
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Quotations approved by Sales Governance &amp; Commercial Finance waiting for tax invoice generation.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={() => navigate('/finance/invoices')}
+          >
+            Invoices Console
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {!data?.approvedQuotationsAwaitingInvoice || data.approvedQuotationsAwaitingInvoice.length === 0 ? (
+            <div className="p-6 text-center text-xs text-gray-400">
+              No approved quotations currently awaiting invoice generation.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#eef2f9] bg-[#fbfcfe] px-6 py-3 text-[11px] font-bold uppercase tracking-wider text-[#8491aa]">
+                    <th className="py-2.5 px-6 font-semibold">Quotation #</th>
+                    <th className="py-2.5 font-semibold">Customer Account</th>
+                    <th className="py-2.5 font-semibold">Approved Date</th>
+                    <th className="py-2.5 font-semibold">Net Deal Value</th>
+                    <th className="py-2.5 px-6 font-semibold text-right">Invoice Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f2f5fb]">
+                  {data.approvedQuotationsAwaitingInvoice.map((quote: any) => (
+                    <tr key={quote.id} className="hover:bg-[#f8faff] transition">
+                      <td className="py-3 px-6 font-bold text-[#3568ed]">
+                        <span className="hover:underline cursor-pointer">
+                          {quote.quotationNumber}
+                        </span>
+                      </td>
+                      <td className="py-3 font-semibold text-[#17213a]">
+                        {quote.customer?.companyName || 'Customer'}
+                      </td>
+                      <td className="py-3 text-gray-500">
+                        {formatDate(quote.createdAt)}
+                      </td>
+                      <td className="py-3 font-bold text-emerald-700">
+                        {formatINR(parseFloat(quote.totalAmount))}
+                      </td>
+                      <td className="py-3 px-6 text-right">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 px-3 text-[11px]"
+                          disabled={generatingQuoteId === quote.id}
+                          onClick={(e) => handleGenerateInvoiceFromDashboard(quote.id, quote.quotationNumber, e)}
+                        >
+                          <Receipt className="h-3 w-3 mr-1" />
+                          {generatingQuoteId === quote.id ? 'Generating...' : 'Generate Invoice'}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Recent Approvals & Recent Invoices Double Column */}
       <div className="grid gap-6 lg:grid-cols-2">

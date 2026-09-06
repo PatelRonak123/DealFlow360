@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   Percent,
   ExternalLink,
+  GitCompare,
+  Tag,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -37,6 +39,7 @@ export const ApprovalsQueuePage: React.FC = () => {
   const [itemToApprove, setItemToApprove] = useState<PendingApprovalItem | null>(null);
   const [approveComments, setApproveComments] = useState('');
   const [itemToReject, setItemToReject] = useState<PendingApprovalItem | null>(null);
+  const [itemToCompare, setItemToCompare] = useState<PendingApprovalItem | null>(null);
   const [rejectComments, setRejectComments] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
@@ -338,6 +341,24 @@ export const ApprovalsQueuePage: React.FC = () => {
                             <span>{quote?.quotationNumber}</span>
                             <ExternalLink className="h-3 w-3 text-gray-400" />
                           </div>
+                          {(quote?.isRevision || ((quote?.versionNumber || 1) > 1)) && (
+                            <div className="mt-1 flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-purple-700 border border-purple-200">
+                                V{quote.versionNumber || 2} Revision
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setItemToCompare(item);
+                                }}
+                                className="inline-flex items-center gap-0.5 text-[10px] font-bold text-[#3568ed] hover:underline cursor-pointer"
+                              >
+                                <GitCompare className="h-3 w-3" />
+                                Diff
+                              </button>
+                            </div>
+                          )}
                         </td>
 
                         <td className="py-3.5">
@@ -618,6 +639,155 @@ export const ApprovalsQueuePage: React.FC = () => {
                 }
               >
                 {rejectMutation.isPending ? 'Rejecting...' : 'Confirm Rejection'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Revision Comparison (Diff) Modal */}
+      <Modal
+        isOpen={Boolean(itemToCompare)}
+        onClose={() => setItemToCompare(null)}
+        title="Quotation Revision Comparison (V1 vs V2)"
+        description="Side-by-side analysis of commercial terms between the customer-visible quote and proposed revision."
+        maxWidth="lg"
+      >
+        {itemToCompare && (
+          <div className="space-y-5 text-xs">
+            {/* Customer Negotiation Demand Context */}
+            {itemToCompare.quotation?.negotiation && (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-blue-950 flex items-center gap-1.5">
+                    <Tag className="h-4 w-4 text-blue-600" />
+                    Customer Negotiation Demand
+                  </span>
+                  <span className="rounded-md bg-blue-200/80 px-2 py-0.5 text-xs font-bold text-blue-900">
+                    {itemToCompare.quotation.negotiation.requestedDiscountPercent}% Discount Requested
+                  </span>
+                </div>
+                {itemToCompare.quotation.negotiation.customerMessage && (
+                  <p className="text-blue-900 italic font-medium">
+                    "{itemToCompare.quotation.negotiation.customerMessage}"
+                  </p>
+                )}
+                {itemToCompare.quotation.negotiation.requestedChanges && itemToCompare.quotation.negotiation.requestedChanges.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {itemToCompare.quotation.negotiation.requestedChanges.map((req, idx) => (
+                      <span key={idx} className="rounded bg-white px-2 py-0.5 text-[11px] font-medium text-blue-800 border border-blue-200">
+                        {req}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Side-by-Side Comparison Table */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <table className="w-full text-left">
+                <thead className="border-b border-slate-200 bg-slate-50 text-[#647592]">
+                  <tr>
+                    <th className="py-3 px-4 font-bold uppercase tracking-wider">Commercial Metric</th>
+                    <th className="py-3 px-4 font-bold uppercase tracking-wider text-slate-700">
+                      Original Quote (V1)
+                    </th>
+                    <th className="py-3 px-4 font-bold uppercase tracking-wider text-[#3568ed]">
+                      Revised Quote ({itemToCompare.quotation.quotationNumber})
+                    </th>
+                    <th className="py-3 px-4 font-bold uppercase tracking-wider text-right">Variance / Delta</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(() => {
+                    const origSubtotal = parseFloat(itemToCompare.quotation.parentQuotation?.subtotal || itemToCompare.quotation.subtotal);
+                    const revSubtotal = parseFloat(itemToCompare.quotation.subtotal);
+
+                    const origDiscount = parseFloat(itemToCompare.quotation.parentQuotation?.discountAmount || '0');
+                    const revDiscount = parseFloat(itemToCompare.quotation.discountAmount);
+
+                    const origTotal = parseFloat(itemToCompare.quotation.parentQuotation?.totalAmount || itemToCompare.quotation.totalAmount);
+                    const revTotal = parseFloat(itemToCompare.quotation.totalAmount);
+
+                    const origPct = origSubtotal > 0 ? (origDiscount / origSubtotal) * 100 : 0;
+                    const revPct = revSubtotal > 0 ? (revDiscount / revSubtotal) * 100 : 0;
+
+                    const totalDiff = revTotal - origTotal;
+
+                    return (
+                      <>
+                        <tr>
+                          <td className="py-3 px-4 font-medium text-slate-600">Subtotal</td>
+                          <td className="py-3 px-4 font-semibold text-slate-800">{formatINR(origSubtotal)}</td>
+                          <td className="py-3 px-4 font-bold text-[#3568ed]">{formatINR(revSubtotal)}</td>
+                          <td className="py-3 px-4 text-right text-slate-500">
+                            {formatINR(revSubtotal - origSubtotal)}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-4 font-medium text-slate-600">Discount Rate</td>
+                          <td className="py-3 px-4 font-semibold text-slate-800">{origPct.toFixed(1)}%</td>
+                          <td className="py-3 px-4 font-bold text-amber-700">{revPct.toFixed(1)}%</td>
+                          <td className="py-3 px-4 text-right font-bold text-amber-700">
+                            +{(revPct - origPct).toFixed(1)}%
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-4 font-medium text-slate-600">Discount Amount</td>
+                          <td className="py-3 px-4 font-semibold text-slate-800">{formatINR(origDiscount)}</td>
+                          <td className="py-3 px-4 font-bold text-amber-700">{formatINR(revDiscount)}</td>
+                          <td className="py-3 px-4 text-right font-bold text-rose-600">
+                            +{formatINR(revDiscount - origDiscount)}
+                          </td>
+                        </tr>
+                        <tr className="bg-slate-50/60 font-bold">
+                          <td className="py-3.5 px-4 text-slate-900">Total Net Amount</td>
+                          <td className="py-3.5 px-4 text-slate-900">{formatINR(origTotal)}</td>
+                          <td className="py-3.5 px-4 text-[#3568ed] text-sm">{formatINR(revTotal)}</td>
+                          <td className={`py-3.5 px-4 text-right ${totalDiff < 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                            {totalDiff < 0 ? '-' : '+'}{formatINR(Math.abs(totalDiff))}
+                          </td>
+                        </tr>
+                      </>
+                    );
+                  })()}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Actions in Comparison Modal */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setItemToCompare(null)}
+              >
+                Close Comparison
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-rose-700 border-rose-200 hover:bg-rose-50"
+                onClick={() => {
+                  const it = itemToCompare;
+                  setItemToCompare(null);
+                  setItemToReject(it);
+                }}
+              >
+                Reject Revision
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => {
+                  const it = itemToCompare;
+                  setItemToCompare(null);
+                  setItemToApprove(it);
+                }}
+              >
+                Authorize &amp; Publish Revision V2
               </Button>
             </div>
           </div>

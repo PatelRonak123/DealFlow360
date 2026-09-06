@@ -7,6 +7,7 @@ import {
   AddQuotationItemPayload,
   UpdateQuotationItemPayload,
   SubmitQuotationPayload,
+  BackendQuotation,
 } from '../types/quotationApi.types';
 
 export const quotationKeys = {
@@ -33,10 +34,25 @@ export function useQuotationsList(params?: QuotationQueryParams) {
 
 // Hook: Single Quotation Detail with populated lines & customer
 export function useQuotationDetail(id: string | undefined) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: quotationKeys.detail(id || ''),
     queryFn: () => quotationsApi.getQuotationById(id!),
     enabled: Boolean(id),
+    staleTime: 1000 * 30, // 30 seconds fresh
+    refetchOnWindowFocus: false,
+    placeholderData: () => {
+      // Find quote in existing cached lists to render immediately with zero loading lag
+      if (!id) return undefined;
+      const listQueries = queryClient.getQueriesData<{ items: BackendQuotation[] }>({
+        queryKey: quotationKeys.lists(),
+      });
+      for (const [, data] of listQueries) {
+        const found = data?.items?.find((q) => q.id === id);
+        if (found) return found;
+      }
+      return undefined;
+    },
   });
 }
 
@@ -46,6 +62,8 @@ export function useQuotationApprovals(id: string | undefined) {
     queryKey: quotationKeys.approvals(id || ''),
     queryFn: () => quotationsApi.getApprovals(id!),
     enabled: Boolean(id),
+    staleTime: 1000 * 60, // 60 seconds fresh
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -55,6 +73,8 @@ export function useQuotationDiscountEvaluation(id: string | undefined) {
     queryKey: quotationKeys.evaluation(id || ''),
     queryFn: () => quotationsApi.getDiscountEvaluation(id!),
     enabled: Boolean(id),
+    staleTime: 1000 * 60, // 60 seconds fresh
+    refetchOnWindowFocus: false,
   });
 }
 

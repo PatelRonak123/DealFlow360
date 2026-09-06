@@ -36,6 +36,14 @@ export function useFinancialDealReview(id: string) {
   });
 }
 
+export function useApprovedQuotations(params: { search?: string; invoiced?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['finance', 'approved-quotations', params],
+    queryFn: () => financeApi.getApprovedQuotations(params),
+    staleTime: 15 * 1000,
+  });
+}
+
 export function useInvoices(params: { status?: string; customerId?: string; search?: string; page?: number; limit?: number } = {}) {
   return useQuery({
     queryKey: FINANCE_QUERY_KEYS.invoices(params),

@@ -96,6 +96,21 @@ export interface BackendQuotation {
     name: string;
     email: string;
   };
+  versionNumber?: number;
+  isCustomerVisible?: boolean;
+  parentQuotationId?: string | null;
+  revisionReason?: string | null;
+  negotiationId?: string | null;
+  parentQuotation?: BackendQuotation | null;
+  negotiation?: {
+    id: string;
+    requestedDiscountPercent: number | string;
+    requestedChanges?: string | null;
+    customerMessage?: string | null;
+    status: string;
+    repResponse?: string | null;
+    handledAt?: string | null;
+  } | null;
   items?: BackendQuotationItem[];
 }
 

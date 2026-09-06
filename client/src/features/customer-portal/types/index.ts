@@ -89,6 +89,19 @@ export interface CustomerQuotationDetail {
   };
   orderId?: string;
   orderNumber?: string;
+  versionNumber?: number;
+  isCustomerVisible?: boolean;
+  revisionReason?: string;
+  parentQuotationId?: string;
+  activeNegotiation?: {
+    id: string;
+    requestedDiscountPercent: number;
+    requestedChanges?: string;
+    customerMessage?: string;
+    status: string;
+    repResponse?: string;
+    handledAt?: string;
+  };
 }
 
 export interface NegotiationSubmissionInput {

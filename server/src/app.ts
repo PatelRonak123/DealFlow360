@@ -36,6 +36,7 @@ import { adminRouter } from './modules/admin/index.js';
 import { invoicesRouter } from './modules/invoices/index.js';
 import { financeRouter } from './modules/finance/index.js';
 import { searchRouter } from './modules/search/index.js';
+import { negotiationsRouter } from './modules/negotiations/routes/negotiations.routes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -103,6 +104,7 @@ export function createApp(): Express {
   app.use(`${prefix}/finance`, financeRouter);
   app.use(`${prefix}/admin`, adminRouter);
   app.use(`${prefix}/search`, searchRouter);
+  app.use(`${prefix}/negotiations`, negotiationsRouter);
 
   // 7. 404 Route Catch-all
   app.use(notFoundHandler);

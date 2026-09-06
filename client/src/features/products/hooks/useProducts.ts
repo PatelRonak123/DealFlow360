@@ -11,12 +11,13 @@ export const productKeys = {
   categories: () => ['productCategories'] as const,
 };
 
-export function useProducts(params?: ProductQueryParams) {
+export function useProducts(params?: ProductQueryParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: productKeys.list(params),
     queryFn: () => productApi.getProducts(params),
     staleTime: 1000 * 60 * 5,
     placeholderData: keepPreviousData,
+    enabled: options?.enabled !== undefined ? options.enabled : true,
   });
 }
 

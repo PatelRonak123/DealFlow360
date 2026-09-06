@@ -9,12 +9,13 @@ export const customerKeys = {
   detail: (id: string) => [...customerKeys.details(), id] as const,
 };
 
-export function useCustomers(params?: CustomerQueryParams) {
+export function useCustomers(params?: CustomerQueryParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: customerKeys.list(params),
     queryFn: () => customerApi.getCustomers(params),
     staleTime: 1000 * 60 * 5, // 5 minutes cache
     placeholderData: keepPreviousData,
+    enabled: options?.enabled !== undefined ? options.enabled : true,
   });
 }
 

@@ -28,6 +28,8 @@ export interface QuotationWithDetails extends Quotation {
   priceList?: PriceList;
   createdByUser?: Pick<User, 'id' | 'name' | 'email'>;
   items?: QuotationItemWithProduct[];
+  parentQuotation?: Quotation;
+  negotiation?: any;
 }
 
 export interface PaginatedQuotations {
@@ -45,7 +47,7 @@ interface CachedQuotations {
 
 const quotationsCache = new Map<string, CachedQuotations>();
 const inFlightQuotations = new Map<string, Promise<PaginatedQuotations>>();
-const QUOTATIONS_CACHE_TTL_MS = 15 * 1000; // 15 seconds fast cache
+const QUOTATIONS_CACHE_TTL_MS = 30 * 1000; // 30 seconds high performance read cache
 
 export class QuotationsRepository {
   invalidateCache(): void {
@@ -130,20 +132,8 @@ export class QuotationsRepository {
 
         const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-        // Count query: skip customer join if no search is performed to save DB work
-        const countQuery = search
-          ? client
-              .select({ count: count() })
-              .from(quotations)
-              .leftJoin(customers, eq(quotations.customerId, customers.id))
-              .where(whereClause)
-          : client
-              .select({ count: count() })
-              .from(quotations)
-              .where(whereClause);
-
-        // Rows query: fetch quotations with joined customer, tier, and user
-        const rowsQuery = client
+        // Single-pass query: Fetch paginated quotations and total window count in ONE round-trip
+        const rows = await client
           .select({
             quotation: quotations,
             customer: customers,
@@ -154,6 +144,7 @@ export class QuotationsRepository {
               name: users.name,
               email: users.email,
             },
+            fullCount: sql<string>`count(*) over()`,
           })
           .from(quotations)
           .leftJoin(customers, eq(quotations.customerId, customers.id))
@@ -165,10 +156,17 @@ export class QuotationsRepository {
           .limit(limit)
           .offset(offset);
 
-        // Execute both queries concurrently to cut latency in half
-        const [[totalResult], rows] = await Promise.all([countQuery, rowsQuery]);
-
-        const total = Number(totalResult?.count || 0);
+        let total = 0;
+        if (rows.length > 0) {
+          total = Number(rows[0].fullCount || 0);
+        } else if (page > 1) {
+          // Only fallback to a count query if an out-of-bounds page returned 0 rows
+          const [totalResult] = await client
+            .select({ count: count() })
+            .from(quotations)
+            .where(whereClause);
+          total = Number(totalResult?.count || 0);
+        }
 
         const items: QuotationWithDetails[] = rows.map((r) => ({
           ...r.quotation,
@@ -228,6 +226,8 @@ export class QuotationsRepository {
           },
           orderBy: (items, { asc }) => [asc(items.createdAt)],
         },
+        parentQuotation: true,
+        negotiation: true,
       },
     });
 

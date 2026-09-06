@@ -41,6 +41,14 @@ export const financeApi = {
     return res.data;
   },
 
+  // Approved Quotations for Invoice Generation
+  getApprovedQuotations: async (params: { search?: string; invoiced?: boolean } = {}) => {
+    const res = await apiClient.get<{ success: boolean; data: any[] }>('/finance/approved-quotations', {
+      params,
+    });
+    return res.data.data;
+  },
+
   // Invoices API
   getInvoices: async (params: { status?: string; customerId?: string; search?: string; page?: number; limit?: number } = {}) => {
     const res = await apiClient.get<{

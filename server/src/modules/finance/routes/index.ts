@@ -20,6 +20,10 @@ financeRouter.get("/approvals", (req, res, next) =>
   financeController.listApprovals(req, res, next),
 );
 
+financeRouter.get("/approved-quotations", (req, res, next) =>
+  financeController.listApprovedQuotations(req, res, next),
+);
+
 financeRouter.get("/approvals/:id", (req, res, next) =>
   financeController.getDealReview(req, res, next),
 );

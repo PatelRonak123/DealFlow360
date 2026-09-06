@@ -2,10 +2,11 @@ import { db, Database, DbClient } from '../../../database/db.js';
 import {
   quotations,
   quotationItems,
+  quotationNegotiations,
   NewQuotationDiscountEvaluation,
   NewQuotationApproval,
 } from '../../../database/schema/index.js';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import {
   NotFoundError,
   BadRequestError,
@@ -23,6 +24,7 @@ import {
 import { DiscountGovernanceRepository } from '../repositories/discountGovernance.repository.js';
 import { quotationsRepository } from '../../quotations/repositories/quotations.repository.js';
 import { notificationsService } from '../../notifications/services/notifications.service.js';
+import { customerPortalRepository } from '../../customer-portal/repositories/customerPortal.repository.js';
 
 export interface QuotationSubmissionResult {
   quotationId: string;
@@ -319,6 +321,18 @@ export class ApprovalRoutingService {
     }
 
     const result = await this.db.transaction(async (trx) => {
+      // If advancing to Finance, update timestamp on the Finance step
+      if (nextQuotationStatus === QuotationStatuses.PENDING_FINANCE_APPROVAL) {
+        const nextFinanceStep = remainingPending.find((a) => a.approvalLevel === ApprovalLevels.FINANCE);
+        if (nextFinanceStep) {
+          await this.repository.updateApproval(
+            nextFinanceStep.id,
+            { requestedAt: new Date() },
+            trx
+          );
+        }
+      }
+
       // Concurrently update approval and quotation status inside the transaction
       const [updatedApproval] = await Promise.all([
         this.repository.updateApproval(
@@ -340,6 +354,56 @@ export class ApprovalRoutingService {
           .where(eq(quotations.id, approval.quotationId)),
       ]);
 
+      // Atomic customer visibility assignment upon full approval
+      if (nextQuotationStatus === QuotationStatuses.APPROVED) {
+        if (quotation.parentQuotationId) {
+          // 1. Demote previous version(s) from customer-visible
+          await trx
+            .update(quotations)
+            .set({
+              isCustomerVisible: false,
+              updatedAt: new Date(),
+            })
+            .where(
+              or(
+                eq(quotations.id, quotation.parentQuotationId),
+                eq(quotations.parentQuotationId, quotation.parentQuotationId)
+              )
+            );
+
+          // 2. Promote revised quotation V2 to customer-visible
+          await trx
+            .update(quotations)
+            .set({
+              isCustomerVisible: true,
+              status: QuotationStatuses.APPROVED,
+              updatedAt: new Date(),
+            })
+            .where(eq(quotations.id, quotation.id));
+
+          // 3. Mark linked negotiation as APPROVED
+          if (quotation.negotiationId) {
+            await trx
+              .update(quotationNegotiations)
+              .set({
+                status: 'APPROVED',
+                repResponse: comments || 'Approved by Sales Governance',
+                updatedAt: new Date(),
+              })
+              .where(eq(quotationNegotiations.id, quotation.negotiationId));
+          }
+        } else {
+          // Original quote approved -> ensure customer-visible
+          await trx
+            .update(quotations)
+            .set({
+              isCustomerVisible: true,
+              updatedAt: new Date(),
+            })
+            .where(eq(quotations.id, quotation.id));
+        }
+      }
+
       return {
         approval: updatedApproval,
         quotationStatus: nextQuotationStatus,
@@ -348,7 +412,10 @@ export class ApprovalRoutingService {
     });
 
     if (result.quotationStatus === QuotationStatuses.APPROVED) {
-      // Fully approved
+      // Fully approved across all layers
+      customerPortalRepository.updateNegotiationStatus(approval.quotationId, 'APPROVED', comments);
+      customerPortalRepository.invalidateCustomerCache();
+
       notificationsService.emitNotification({
         title: `Quotation ${quotation.quotationNumber} Approved`,
         message: `Quotation has been approved by Sales Governance. Ready for customer acceptance.`,
@@ -359,18 +426,18 @@ export class ApprovalRoutingService {
         linkUrl: `/customer/quotations/${quotation.id}`,
       });
     } else if (result.quotationStatus === QuotationStatuses.PENDING_FINANCE_APPROVAL) {
-      // Escalated to Finance
+      // Stage 1 (Manager) accepted -> advancing to Stage 2 (Finance)
       notificationsService.emitNotification({
-        title: `Finance Review: ${quotation.quotationNumber}`,
-        message: `Manager approved. Finance tier-2 margin & profitability review required.`,
+        title: `Finance Review Required: ${quotation.quotationNumber}`,
+        message: `Sales Manager approved discount. Tier-2 financial margin & profitability review required.`,
         type: 'APPROVAL',
         status: 'PENDING',
         targetRoles: [Roles.FINANCE, Roles.ADMIN],
-        linkUrl: '/approvals',
+        linkUrl: '/finance/approvals',
       });
       notificationsService.emitNotification({
         title: `Manager Approved: ${quotation.quotationNumber}`,
-        message: `Quotation ${quotation.quotationNumber} approved by Sales Manager and routed to Finance.`,
+        message: `Quotation ${quotation.quotationNumber} approved by Sales Manager and routed to Finance for final sign-off.`,
         type: 'APPROVAL',
         status: 'INFO',
         targetUserId: quotation.createdBy,
@@ -379,11 +446,15 @@ export class ApprovalRoutingService {
     }
 
     quotationsRepository.invalidateCache();
+    this.repository.invalidateCache();
     return result;
   }
 
   /**
-   * Rejects a pending approval step, invalidating subsequent workflow steps.
+   * Rejects a pending approval step.
+   * If Manager rejects at Stage 1: Finance approval is completely skipped (no second approval needed)
+   * and the quotation returns to origination.
+   * If Finance rejects at Stage 2: Quotation returns to origination without further approvals.
    */
   public async rejectApproval(
     approvalId: string,
@@ -431,8 +502,37 @@ export class ApprovalRoutingService {
       throw new NotFoundError(`Associated quotation with ID '${approval.quotationId}' was not found`);
     }
 
+    const invalidationReason = approval.approvalLevel === ApprovalLevels.MANAGER
+      ? 'Approval not required - Rejected by Sales Manager at Stage 1'
+      : 'Approval invalidated after Finance rejection';
+
     const result = await this.db.transaction(async (trx) => {
-      // Concurrently execute approval update, sibling invalidations, and quotation status update
+      // Calculate origination baseline from quotation line items
+      const lineItems = await trx
+        .select()
+        .from(quotationItems)
+        .where(eq(quotationItems.quotationId, approval.quotationId));
+
+      let origSubtotal = parseFloat(quotation.subtotal) || 0;
+      let origDiscount = 0;
+      let origTotal = origSubtotal;
+
+      if (lineItems.length > 0) {
+        origSubtotal = lineItems.reduce(
+          (sum, it) => sum + (parseFloat(it.grossAmount) || ((parseFloat(it.unitPrice) || 0) * (it.quantity || 1))),
+          0
+        );
+        origDiscount = lineItems.reduce(
+          (sum, it) => sum + (parseFloat(it.discountAmount) || 0),
+          0
+        );
+        origTotal = lineItems.reduce(
+          (sum, it) => sum + (parseFloat(it.netAmount) || 0),
+          0
+        );
+      }
+
+      // Concurrently execute approval update, sibling invalidations, and revert quotation to origination
       const [updatedApproval] = await Promise.all([
         this.repository.updateApproval(
           approvalId,
@@ -444,11 +544,15 @@ export class ApprovalRoutingService {
           },
           trx
         ),
-        this.repository.invalidatePendingApprovalsByQuotationId(approval.quotationId, trx),
+        this.repository.invalidatePendingApprovalsByQuotationId(approval.quotationId, trx, invalidationReason),
         trx
           .update(quotations)
           .set({
             status: QuotationStatuses.REJECTED,
+            isCustomerVisible: false,
+            subtotal: origSubtotal.toFixed(2),
+            discountAmount: origDiscount.toFixed(2),
+            totalAmount: origTotal.toFixed(2),
             updatedAt: new Date(),
           })
           .where(eq(quotations.id, approval.quotationId)),
@@ -460,17 +564,37 @@ export class ApprovalRoutingService {
       };
     });
 
-    notificationsService.emitNotification({
-      title: `Quotation ${quotation.quotationNumber} Rejected`,
-      message: `Quotation was rejected during governance review: ${comments || 'Discount exceeded governance limits.'}`,
-      type: 'REJECTION',
-      status: 'REJECTED',
-      targetCustomerId: quotation.customerId,
-      targetRoles: [Roles.CUSTOMER, Roles.SALES_REP, Roles.ADMIN],
-      linkUrl: `/customer/quotations/${quotation.id}`,
-    });
+    // Update customer negotiation history entry and invalidate customer cache
+    customerPortalRepository.updateNegotiationStatus(approval.quotationId, 'REJECTED', comments);
+    customerPortalRepository.invalidateCustomerCache();
+
+    const rejectedByRole = approval.approvalLevel === ApprovalLevels.MANAGER ? 'Sales Manager' : 'Finance';
+
+    if (quotation.parentQuotationId) {
+      // Internal revision rejected: Notify Sales Rep, Customer still sees V1
+      notificationsService.emitNotification({
+        title: `Revision ${quotation.quotationNumber} Rejected by ${rejectedByRole}`,
+        message: `Revision ${quotation.quotationNumber} was rejected: ${comments || 'Discount exceeded governance limits.'}. The customer continues to see the current active quotation.`,
+        type: 'REJECTION',
+        status: 'REJECTED',
+        targetUserId: quotation.createdBy,
+        targetRoles: [Roles.SALES_REP, Roles.ADMIN],
+        linkUrl: `/quotations/${quotation.id}`,
+      });
+    } else {
+      notificationsService.emitNotification({
+        title: `Quotation ${quotation.quotationNumber} Rejected by ${rejectedByRole}`,
+        message: `Quotation was rejected by ${rejectedByRole}: ${comments || 'Discount exceeded governance limits.'}. Returned to origination without requiring further approval.`,
+        type: 'REJECTION',
+        status: 'REJECTED',
+        targetCustomerId: quotation.customerId,
+        targetRoles: [Roles.CUSTOMER, Roles.SALES_REP, Roles.ADMIN],
+        linkUrl: `/customer/quotations/${quotation.id}`,
+      });
+    }
 
     quotationsRepository.invalidateCache();
+    this.repository.invalidateCache();
     return result;
   }
 

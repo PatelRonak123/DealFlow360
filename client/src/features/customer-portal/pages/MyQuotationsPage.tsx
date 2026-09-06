@@ -137,12 +137,19 @@ export const MyQuotationsPage: React.FC = () => {
                 {quotations.map((quote) => (
                   <tr key={quote.id} className="transition hover:bg-[#fcfdff]">
                     <td className="py-4 px-6">
-                      <Link
-                        to={`/customer/quotations/${quote.id}`}
-                        className="font-bold text-[#3568ed] hover:underline"
-                      >
-                        {quote.quotationNumber}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to={`/customer/quotations/${quote.id}`}
+                          className="font-bold text-[#3568ed] hover:underline"
+                        >
+                          {quote.quotationNumber}
+                        </Link>
+                        {quote.versionNumber && quote.versionNumber > 1 && (
+                          <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
+                            V{quote.versionNumber} Revised
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-0.5 text-[11px] text-[#8491aa]">
                         {quote.items.length} line {quote.items.length === 1 ? 'item' : 'items'}
                       </p>

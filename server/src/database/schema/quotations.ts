@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, numeric, date, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, numeric, date, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
 import { customers } from './customers.js';
 import { priceLists } from './priceLists.js';
 import { users } from './users.js';
@@ -20,6 +20,13 @@ export const quotations = pgTable('quotations', {
   issueDate: date('issue_date').notNull(),
   expiryDate: date('expiry_date').notNull(),
   notes: text('notes'),
+  parentQuotationId: uuid('parent_quotation_id').references((): any => quotations.id, {
+    onDelete: 'set null',
+  }),
+  versionNumber: integer('version_number').default(1).notNull(),
+  isCustomerVisible: boolean('is_customer_visible').default(false).notNull(),
+  revisionReason: text('revision_reason'),
+  negotiationId: uuid('negotiation_id'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => users.id),

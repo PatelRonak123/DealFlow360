@@ -35,56 +35,105 @@ export interface PaginatedPriceListItems {
   totalPages: number;
 }
 
+interface CachedPriceLists {
+  data: PaginatedPriceLists;
+  expiresAt: number;
+}
+
+const priceListsCache = new Map<string, CachedPriceLists>();
+const inFlightPriceLists = new Map<string, Promise<PaginatedPriceLists>>();
+const PRICE_LISTS_CACHE_TTL_MS = 60 * 1000; // 60 seconds fast cache
+
 export class PriceListsRepository {
+  invalidateCache(): void {
+    priceListsCache.clear();
+  }
+
   async findAll(
     query: PriceListQueryInput,
     client: Database = db
   ): Promise<PaginatedPriceLists> {
-    const { page = 1, limit = 20, search, currency, isDefault, isActive } = query;
-    const offset = (page - 1) * limit;
-
-    const conditions = [];
-
-    if (search) {
-      conditions.push(ilike(priceLists.name, `%${search}%`));
+    const cacheKey = JSON.stringify(query);
+    const cached = priceListsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
     }
 
-    if (currency) {
-      conditions.push(eq(priceLists.currency, currency.toUpperCase()));
+    if (inFlightPriceLists.has(cacheKey)) {
+      return inFlightPriceLists.get(cacheKey)!;
     }
 
-    if (isDefault !== undefined) {
-      conditions.push(eq(priceLists.isDefault, isDefault));
-    }
+    const fetchPromise = (async (): Promise<PaginatedPriceLists> => {
+      try {
+        const { page = 1, limit = 20, search, currency, isDefault, isActive } = query;
+        const offset = (page - 1) * limit;
 
-    if (isActive !== undefined) {
-      conditions.push(eq(priceLists.isActive, isActive));
-    }
+        const conditions = [];
 
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+        if (search) {
+          conditions.push(ilike(priceLists.name, `%${search}%`));
+        }
 
-    const [totalResult] = await client
-      .select({ count: count() })
-      .from(priceLists)
-      .where(whereClause);
+        if (currency) {
+          conditions.push(eq(priceLists.currency, currency.toUpperCase()));
+        }
 
-    const total = Number(totalResult?.count || 0);
+        if (isDefault !== undefined) {
+          conditions.push(eq(priceLists.isDefault, isDefault));
+        }
 
-    const items = await client
-      .select()
-      .from(priceLists)
-      .where(whereClause)
-      .orderBy(desc(priceLists.isDefault), desc(priceLists.createdAt))
-      .limit(limit)
-      .offset(offset);
+        if (isActive !== undefined) {
+          conditions.push(eq(priceLists.isActive, isActive));
+        }
 
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit) || 1,
-    };
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+        // Single-pass query with window count
+        const rows = await client
+          .select({
+            priceList: priceLists,
+            fullCount: sql<string>`count(*) over()`,
+          })
+          .from(priceLists)
+          .where(whereClause)
+          .orderBy(desc(priceLists.isDefault), desc(priceLists.createdAt))
+          .limit(limit)
+          .offset(offset);
+
+        let total = 0;
+        if (rows.length > 0) {
+          total = Number(rows[0].fullCount || 0);
+        } else if (page > 1) {
+          const [totalResult] = await client
+            .select({ count: count() })
+            .from(priceLists)
+            .where(whereClause);
+          total = Number(totalResult?.count || 0);
+        }
+
+        const items = rows.map((r) => r.priceList);
+
+        const result: PaginatedPriceLists = {
+          items,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+        };
+
+        priceListsCache.set(cacheKey, {
+          data: result,
+          expiresAt: Date.now() + PRICE_LISTS_CACHE_TTL_MS,
+        });
+
+        return result;
+      } finally {
+        inFlightPriceLists.delete(cacheKey);
+      }
+    })();
+
+    inFlightPriceLists.set(cacheKey, fetchPromise);
+    return fetchPromise;
   }
 
   async findById(id: string, client: Database = db): Promise<PriceList | undefined> {
@@ -126,6 +175,7 @@ export class PriceListsRepository {
     }
 
     const [created] = await client.insert(priceLists).values(data).returning();
+    this.invalidateCache();
     return created;
   }
 
@@ -157,6 +207,7 @@ export class PriceListsRepository {
       .where(eq(priceLists.id, id))
       .returning();
 
+    this.invalidateCache();
     return updated;
   }
 
@@ -166,6 +217,7 @@ export class PriceListsRepository {
       .where(eq(priceLists.id, id))
       .returning();
 
+    this.invalidateCache();
     return result.length > 0;
   }
 
