@@ -32,6 +32,19 @@ export class FinanceController {
     }
   }
 
+  async listApprovedQuotations(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { search, invoiced } = req.query;
+      const result = await this.service.listApprovedQuotations({
+        search: search as string,
+        invoiced: invoiced !== undefined ? invoiced === 'true' : undefined,
+      });
+      sendSuccess(res, result, 'Approved quotations retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async getDealReview(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;

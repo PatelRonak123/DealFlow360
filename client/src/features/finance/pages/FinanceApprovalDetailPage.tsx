@@ -10,6 +10,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Building,
+  Receipt,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +21,7 @@ import {
   useApproveFinanceDealMutation,
   useRejectFinanceDealMutation,
   useReturnFinanceDealMutation,
+  useGenerateInvoiceMutation,
 } from '../hooks/useFinance';
 import { formatINR, formatDate } from '@/utils/formatters';
 
@@ -36,12 +38,14 @@ export const FinanceApprovalDetailPage: React.FC = () => {
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useFinancialDealReview(id || '');
 
   const approveMutation = useApproveFinanceDealMutation();
   const rejectMutation = useRejectFinanceDealMutation();
   const returnMutation = useReturnFinanceDealMutation();
+  const generateInvoiceMutation = useGenerateInvoiceMutation();
 
   if (isLoading) {
     return (
@@ -124,6 +128,18 @@ export const FinanceApprovalDetailPage: React.FC = () => {
     }
   };
 
+  const handleGenerateInvoiceFromDossier = async () => {
+    setIsGeneratingInvoice(true);
+    setActionError(null);
+    try {
+      const created = await generateInvoiceMutation.mutateAsync(quotation.id);
+      navigate(`/finance/invoices/${created.id}`);
+    } catch (err: any) {
+      setActionError(err.response?.data?.message || err.message || 'Failed to generate invoice from quotation.');
+      setIsGeneratingInvoice(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-150 max-w-6xl mx-auto">
       {/* Back Navigation & Breadcrumb */}
@@ -181,7 +197,7 @@ export const FinanceApprovalDetailPage: React.FC = () => {
           </p>
         </div>
 
-        {isPending && (
+        {isPending ? (
           <div className="flex flex-wrap items-center gap-2.5">
             <Button
               variant="outline"
@@ -220,7 +236,20 @@ export const FinanceApprovalDetailPage: React.FC = () => {
               Authorize &amp; Signoff
             </Button>
           </div>
-        )}
+        ) : (data.approvalStatus === 'APPROVED' || quotation.status === 'APPROVED') ? (
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              variant="primary"
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              leftIcon={<Receipt className="h-4 w-4" />}
+              disabled={isGeneratingInvoice}
+              onClick={handleGenerateInvoiceFromDossier}
+            >
+              {isGeneratingInvoice ? 'Generating Tax Invoice...' : 'Generate Tax Invoice Bill'}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {/* Commercial & Customer Metadata Cards Grid */}

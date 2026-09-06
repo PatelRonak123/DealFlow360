@@ -1,9 +1,40 @@
+export interface ApprovedQuotationData {
+  id: string;
+  quotationNumber: string;
+  customerId: string;
+  priceListId?: string;
+  status: string;
+  currency: string;
+  subtotal: string;
+  discountAmount: string;
+  totalAmount: string;
+  issueDate: string;
+  expiryDate: string;
+  notes?: string | null;
+  createdAt: string;
+  customer?: {
+    id: string;
+    companyName: string;
+    email: string;
+    contactName?: string | null;
+  };
+  hasInvoice: boolean;
+  invoice?: {
+    id: string;
+    invoiceNumber: string;
+    status: string;
+    totalAmount: string;
+    balanceDue: string;
+  } | null;
+}
+
 export interface FinanceDashboardData {
   overview: {
     pendingFinanceApprovals: number;
     pendingFinanceValue: number;
     approvedDealsCount: number;
     rejectedDealsCount: number;
+    approvedAwaitingInvoiceCount?: number;
     totalInvoiced: number;
     totalCollected: number;
     totalOutstanding: number;
@@ -22,6 +53,7 @@ export interface FinanceDashboardData {
   recentInvoices: InvoiceItemData[];
   recentPayments: PaymentItemData[];
   recentApprovals: any[];
+  approvedQuotationsAwaitingInvoice?: ApprovedQuotationData[];
 }
 
 export interface InvoiceItemData {
