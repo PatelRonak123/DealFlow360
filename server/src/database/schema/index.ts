@@ -15,6 +15,7 @@ export * from './categoryDiscountRules.js';
 export * from './quotations.js';
 export * from './quotationItems.js';
 export * from './quotationApprovals.js';
+export * from './quotationNegotiations.js';
 export * from './quotationDiscountEvaluations.js';
 export * from './recommendationRules.js';
 export * from './recommendationEvents.js';

@@ -5,6 +5,7 @@ import {
   quotations,
   quotationItems,
   quotationApprovals,
+  quotationNegotiations,
 } from '../../../database/schema/index.js';
 import { eq, desc, and, or, ilike } from 'drizzle-orm';
 import {
@@ -23,6 +24,7 @@ import {
   CustomerPortalPaginatedResult,
 } from '../types/customerPortal.types.js';
 import { notificationsService } from '../../notifications/services/notifications.service.js';
+import { discountGovernanceRepository } from '../../discount-governance/repositories/discountGovernance.repository.js';
 
 interface InMemoryCustomerData {
   profileExtra?: {
@@ -68,6 +70,38 @@ export class CustomerPortalRepository {
     } else {
       this.customerCache.clear();
     }
+  }
+
+  async updateNegotiationStatus(quotationId: string, status: 'APPROVED' | 'REJECTED' | 'DECLINED', comments?: string): Promise<void> {
+    try {
+      await db
+        .update(quotationNegotiations)
+        .set({
+          status: status === 'REJECTED' ? 'DECLINED' : status,
+          repResponse: comments || null,
+          updatedAt: new Date(),
+        })
+        .where(
+          or(
+            eq(quotationNegotiations.quotationId, quotationId),
+            eq(quotationNegotiations.quotationVersionId, quotationId),
+            eq(quotationNegotiations.revisedQuotationId, quotationId)
+          )
+        );
+    } catch (err) {
+      console.error('Failed to update quotation_negotiations status:', err);
+    }
+
+    for (const store of this.customerStores.values()) {
+      const history = store.negotiationHistory[quotationId];
+      if (history && history.length > 0) {
+        history[0].status = status as any;
+        if (comments) {
+          history[0].comments = comments;
+        }
+      }
+    }
+    this.invalidateCustomerCache();
   }
 
   private getStore(key: string): InMemoryCustomerData {
@@ -465,6 +499,10 @@ export class CustomerPortalRepository {
         overallStatus: overallApprovalStatus,
         steps: approvalSteps,
       },
+      versionNumber: quote.versionNumber || 1,
+      isCustomerVisible: quote.isCustomerVisible ?? true,
+      revisionReason: quote.revisionReason || undefined,
+      parentQuotationId: quote.parentQuotationId || undefined,
     };
   }
 
@@ -482,7 +520,10 @@ export class CustomerPortalRepository {
     }
 
     try {
-      const conditions = [eq(quotations.customerId, customer.id)];
+      const conditions = [
+        eq(quotations.customerId, customer.id),
+        eq(quotations.isCustomerVisible, true),
+      ];
 
       if (query?.status && query.status !== 'ALL') {
         conditions.push(eq(quotations.status, query.status));
@@ -566,6 +607,7 @@ export class CustomerPortalRepository {
       const row = await db.query.quotations.findFirst({
         where: and(
           eq(quotations.customerId, customer.id),
+          eq(quotations.isCustomerVisible, true),
           or(eq(quotations.id, id), eq(quotations.quotationNumber, id))
         ),
         with: {
@@ -581,7 +623,68 @@ export class CustomerPortalRepository {
       if (!row) return undefined;
 
       const store = this.getStore(customer.id);
-      return this.mapDbQuotationToDetail(row, customer, store.negotiationHistory[row.id] || []);
+      let history = store.negotiationHistory[row.id] || [];
+
+      // Also merge any database-persisted quotation_negotiations
+      try {
+        const dbNegs = await db.query.quotationNegotiations.findMany({
+          where: or(
+            eq(quotationNegotiations.quotationId, row.id),
+            eq(quotationNegotiations.quotationVersionId, row.id),
+            eq(quotationNegotiations.revisedQuotationId, row.id)
+          ),
+          orderBy: desc(quotationNegotiations.createdAt),
+        });
+
+        if (dbNegs.length > 0) {
+          const dbHistory: NegotiationHistoryEntry[] = dbNegs.map((neg) => {
+            let changes: string[] = [];
+            try {
+              if (neg.requestedChanges) changes = JSON.parse(neg.requestedChanges);
+            } catch {
+              changes = [neg.requestedChanges || ''];
+            }
+            return {
+              id: neg.id,
+              quotationId: neg.quotationId,
+              requestedBy: customer.contactName || customer.companyName || 'Customer',
+              requestedRole: 'CUSTOMER',
+              requestedDiscountPercent: parseFloat(String(neg.requestedDiscountPercent || '0')),
+              reason: neg.customerMessage || 'Customer negotiation request',
+              changeRequests: changes,
+              status: neg.status === 'APPROVED' ? 'APPROVED' : neg.status === 'DECLINED' ? 'REJECTED' : 'PENDING',
+              approvals: [],
+              comments: neg.repResponse || undefined,
+              createdAt: new Date(neg.createdAt).toISOString(),
+            };
+          });
+          history = dbHistory;
+        }
+      } catch (err) {
+        console.error('Error fetching db negotiations:', err);
+      }
+
+      const detail = this.mapDbQuotationToDetail(row, customer, history);
+
+      // Check for active or latest negotiation
+      const activeNeg = history.find((h) => h.status === 'PENDING') || history[0];
+      if (activeNeg) {
+        detail.activeNegotiation = {
+          id: activeNeg.id,
+          status:
+            activeNeg.status === 'REJECTED'
+              ? 'DECLINED'
+              : activeNeg.status === 'APPROVED'
+              ? 'APPROVED'
+              : 'REQUESTED',
+          requestedDiscountPercent: activeNeg.requestedDiscountPercent,
+          customerMessage: activeNeg.reason,
+          repResponse: activeNeg.comments,
+          createdAt: activeNeg.createdAt,
+        };
+      }
+
+      return detail;
     } catch {
       return undefined;
     }
@@ -607,75 +710,81 @@ export class CustomerPortalRepository {
       throw new Error(`Quotation with ID '${quotationId}' not found or access denied`);
     }
 
-    const requestedDiscount = data.requestedDiscountPercent;
-    let newStatus: 'NEGOTIATION' | 'PENDING_APPROVAL' | 'APPROVED' = 'NEGOTIATION';
-    const approvalSteps: ApprovalStep[] = [];
-
-    if (requestedDiscount <= 10) {
-      newStatus = 'APPROVED';
-      approvalSteps.push({
-        level: 'SALES_MANAGER',
-        status: 'APPROVED',
-        approverName: 'Automated Governance System',
-        decidedAt: new Date().toISOString(),
-        comments: 'Within authorized 10% standard tier threshold. Automatically pre-approved.',
-      });
-    } else if (requestedDiscount <= 20) {
-      newStatus = 'PENDING_APPROVAL';
-      approvalSteps.push({
-        level: 'SALES_MANAGER',
-        status: 'PENDING',
-        approverName: 'Sales Director',
-        comments: 'Pending Sales Manager review for discount between 10% and 20%.',
-      });
-    } else {
-      newStatus = 'PENDING_APPROVAL';
-      approvalSteps.push(
-        {
-          level: 'SALES_MANAGER',
-          status: 'PENDING',
-          approverName: 'Sales Director',
-          comments: 'Tier 1 Approval Required for high discount request (>20%).',
-        },
-        {
-          level: 'FINANCE',
-          status: 'PENDING',
-          approverName: 'Finance Lead',
-          comments: 'Tier 2 Financial Margin & Profitability Review Required.',
-        }
-      );
+    const customer = await this.resolveCustomer(customerId, userEmail);
+    if (!customer) {
+      throw new Error('Customer account resolution failed');
     }
 
-    const subtotalNum = parseFloat(quote.subtotal) || 0;
-    const newDiscountAmount = ((subtotalNum * requestedDiscount) / 100).toFixed(2);
-    const newTotal = (subtotalNum - parseFloat(newDiscountAmount)).toFixed(2);
+    const requestedDiscount = data.requestedDiscountPercent;
 
-    // Update quotation in DB
+    // Check if an active negotiation request is already pending for this quotation
+    const existingActive = await db.query.quotationNegotiations.findFirst({
+      where: and(
+        eq(quotationNegotiations.quotationId, quote.id),
+        or(
+          eq(quotationNegotiations.status, 'REQUESTED'),
+          eq(quotationNegotiations.status, 'UNDER_REVIEW')
+        )
+      ),
+    });
+
+    let negotiationRecord;
+    if (existingActive) {
+      const [updated] = await db
+        .update(quotationNegotiations)
+        .set({
+          requestedDiscountPercent: requestedDiscount.toFixed(2),
+          requestedChanges: JSON.stringify(data.changeRequests || []),
+          customerMessage: data.reason || data.message || `Customer counter-offer: ${requestedDiscount}% discount requested.`,
+          status: 'REQUESTED',
+          updatedAt: new Date(),
+        })
+        .where(eq(quotationNegotiations.id, existingActive.id))
+        .returning();
+      negotiationRecord = updated;
+    } else {
+      const [inserted] = await db
+        .insert(quotationNegotiations)
+        .values({
+          quotationId: quote.id,
+          quotationVersionId: quote.id,
+          customerId: customer.id,
+          requestedDiscountPercent: requestedDiscount.toFixed(2),
+          requestedChanges: JSON.stringify(data.changeRequests || []),
+          customerMessage: data.reason || data.message || `Customer counter-offer: ${requestedDiscount}% discount requested.`,
+          status: 'REQUESTED',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      negotiationRecord = inserted;
+    }
+
+    // Set quotation status to NEGOTIATION and link negotiationId without mutating original V1 commercial totals
     await db
       .update(quotations)
       .set({
-        status: newStatus,
-        discountAmount: newDiscountAmount,
-        totalAmount: newTotal,
+        status: 'NEGOTIATION',
+        negotiationId: negotiationRecord.id,
         updatedAt: new Date(),
       })
       .where(eq(quotations.id, quote.id));
 
     const newHistoryEntry: NegotiationHistoryEntry = {
-      id: `neg_${Date.now()}`,
+      id: negotiationRecord.id,
       quotationId: quote.id,
-      requestedBy: userName || quote.customerName || 'Customer',
+      requestedBy: userName || customer.contactName || customer.companyName || 'Customer',
       requestedRole: 'CUSTOMER',
       requestedDiscountPercent: requestedDiscount,
       reason: data.reason || data.message || 'Customer requested commercial discount adjustment.',
       changeRequests: data.changeRequests,
-      status: newStatus === 'APPROVED' ? 'APPROVED' : 'PENDING',
-      approvals: approvalSteps,
+      status: 'PENDING',
+      approvals: [],
       comments: data.message,
       createdAt: new Date().toISOString(),
     };
 
-    const store = this.getStore(quote.customerId || userEmail || 'unknown');
+    const store = this.getStore(customer.id);
     if (!store.negotiationHistory[quote.id]) {
       store.negotiationHistory[quote.id] = [];
     }
@@ -684,7 +793,7 @@ export class CustomerPortalRepository {
     const notifItem = {
       id: `notif_${Date.now()}`,
       title: `Negotiation Submitted for ${quote.quotationNumber}`,
-      message: `Your request for ${requestedDiscount}% discount has been submitted to Sales Governance.`,
+      message: `Your request for ${requestedDiscount}% discount has been submitted to your Sales Representative.`,
       type: 'NEGOTIATION' as const,
       isRead: false,
       createdAt: new Date().toISOString(),
@@ -693,12 +802,12 @@ export class CustomerPortalRepository {
     store.notifications.unshift(notifItem);
 
     notificationsService.emitNotification({
-      title: `Counter-Offer: ${quote.quotationNumber}`,
-      message: `${quote.customerName || 'Customer'} submitted a negotiation request (${requestedDiscount}% discount).`,
+      title: `Negotiation Request: ${quote.quotationNumber}`,
+      message: `${customer.companyName || 'Customer'} submitted a negotiation counter-offer (${requestedDiscount}% discount).`,
       type: 'NEGOTIATION',
       status: 'PENDING',
       targetRoles: ['SALES_REP', 'SALES_MANAGER', 'ADMIN'],
-      linkUrl: `/quotations/${quote.id}`,
+      linkUrl: `/negotiations`,
     });
 
     return (await this.findQuotationById(quotationId, customerId, userEmail))!;

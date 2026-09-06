@@ -62,6 +62,7 @@ import { ApprovalsQueuePage } from '@/features/approvals';
 import { FulfillmentLogisticsPage } from '@/features/fulfillment/pages/FulfillmentLogisticsPage';
 import { SubscriptionsManagementPage } from '@/features/subscriptions/pages/SubscriptionsManagementPage';
 import { RevenueAnalyticsPage } from '@/features/reports/pages/RevenueAnalyticsPage';
+import { NegotiationsPage } from '@/features/negotiations';
 
 // Access Control
 import { RoleGuard } from '@/components/common/RoleGuard';
@@ -292,6 +293,14 @@ export const AppRoutes: React.FC = () => {
             element={
               <RoleGuard allowedRoles={[ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN]} moduleName="CPQ Quote Editor">
                 <QuoteBuilderPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/negotiations"
+            element={
+              <RoleGuard allowedRoles={[ROLES.SALES_REP, ROLES.SALES_MANAGER, ROLES.ADMIN]} moduleName="Negotiations Management">
+                <NegotiationsPage />
               </RoleGuard>
             }
           />

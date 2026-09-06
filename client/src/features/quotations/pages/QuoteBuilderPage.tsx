@@ -232,11 +232,14 @@ export const QuoteBuilderPage: React.FC = () => {
   const {
     data: searchProductData,
     isLoading: isSearchProductLoading,
-  } = useProducts({
-    search: debouncedProductSearch.trim() || undefined,
-    limit: 15,
-    isActive: true,
-  });
+  } = useProducts(
+    {
+      search: debouncedProductSearch.trim() || undefined,
+      limit: 15,
+      isActive: true,
+    },
+    { enabled: isProductModalOpen }
+  );
 
   const modalProducts = searchProductData?.items || [];
 

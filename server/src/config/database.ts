@@ -8,8 +8,9 @@ const isSslRequired =
 
 export const databaseConfig = {
   url: env.DATABASE_URL,
-  maxConnections: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 20000,
+  maxConnections: 15,
+  minConnections: 2,
+  idleTimeoutMillis: 120000,
+  connectionTimeoutMillis: 15000,
   ssl: isSslRequired ? { rejectUnauthorized: false } : false,
 } as const;

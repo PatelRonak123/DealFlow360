@@ -194,6 +194,8 @@ export class QuotationsService {
             issueDate: data.issueDate,
             expiryDate: data.expiryDate,
             notes: data.notes?.trim() || null,
+            versionNumber: 1,
+            isCustomerVisible: true,
             createdBy: user.userId,
           })
           .returning();
@@ -239,6 +241,8 @@ export class QuotationsService {
       issueDate: data.issueDate,
       expiryDate: data.expiryDate,
       notes: data.notes?.trim() || null,
+      versionNumber: 1,
+      isCustomerVisible: true,
       createdBy: user.userId,
     });
   }
@@ -557,6 +561,10 @@ export class QuotationsService {
           issueDate: today,
           expiryDate: expiryDate,
           notes: fullNotes,
+          parentQuotationId: parent.id,
+          versionNumber: (parent.versionNumber || 1) + 1,
+          isCustomerVisible: false,
+          revisionReason: data?.notes?.trim() || `Revision of ${parent.quotationNumber}`,
           createdBy: user.userId,
         })
         .returning();

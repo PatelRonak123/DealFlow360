@@ -28,18 +28,20 @@ export const CustomerSearchCombobox: React.FC<CustomerSearchComboboxProps> = ({
     selectedCustomerId || undefined
   );
 
-  // Search active customers when dropdown is open and query has text
   const {
     data: searchResults,
     isLoading: isSearching,
     isError,
     error,
     refetch,
-  } = useCustomers({
-    search: debouncedSearch.trim() || undefined,
-    limit: 10,
-    status: 'ACTIVE',
-  });
+  } = useCustomers(
+    {
+      search: debouncedSearch.trim() || undefined,
+      limit: 10,
+      status: 'ACTIVE',
+    },
+    { enabled: isOpen || !selectedCustomerId }
+  );
 
   const matchingCustomers = searchResults?.items || [];
 

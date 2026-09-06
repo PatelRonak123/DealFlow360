@@ -47,6 +47,10 @@ export class FinanceService {
     });
   }
 
+  async listApprovedQuotations(filters?: { search?: string; invoiced?: boolean }) {
+    return this.repository.listApprovedQuotations(filters);
+  }
+
   async getFinancialDealReview(id: string) {
     // 1. Find approval record or quotation by ID
     const [approvalRow] = await this.db
